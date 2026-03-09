@@ -65,7 +65,7 @@ function MRISubspaceRecon.NFFTNormalOp(
         (res, x, α, β) -> mul!(res, A, x, α, β),
         nothing,
         (res, x, α, β) -> mul!(res, A, x, α, β);
-        S = CuArray{Complex{T}}
+        S = typeof(similar(Λ, Complex{T}, 0))
     )
 end
 
