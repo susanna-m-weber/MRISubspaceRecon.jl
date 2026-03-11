@@ -5,7 +5,7 @@ function MRISubspaceRecon.calculate_coil_maps(
     U=CUDA.ones(T, size(trj)[end]),
     sample_mask=CUDA.ones(Bool, size(trj)[2:end]),
     kernel_size=ntuple(_ -> 6, N),
-    calib_size=ntuple(i -> nextprod((2, 3, 5), img_shape[i] ÷ (maximum(img_shape) ÷ 32)), length(img_shape)), 
+    calib_size=ntuple(i -> nextprod((2, 3, 5), img_shape[i] ÷ (maximum(img_shape) ÷ 32)), length(img_shape)),
     eigThresh_1=0.01,
     eigThresh_2=0.9,
     nmaps=1,
@@ -14,13 +14,12 @@ function MRISubspaceRecon.calculate_coil_maps(
 
     @assert all([icalib .== nextprod((2, 3, 5), icalib) for icalib ∈ calib_size]) "calib_size has to be composed of the prime factors 2, 3, and 5 (cf. NonuniformFFTs.jl documentation)."
 
-    calib_scale = cu(collect(img_shape ./ calib_size))
-    mask_calib = reshape(all(abs.(trj) .* calib_scale .< 0.5; dims=1), size(trj, 2), :)
+    trj_calib = trj .* cu(collect(T.(img_shape ./ calib_size))) # scale trj for correct FOV
+    mask_calib = reshape(all(abs.(trj_calib) .< 0.5; dims=1), size(trj_calib, 2), :)
     mask_calib .&= sample_mask # update mask to only take calib region of k-space in CoilwiseCG
-    trj_calib = trj .* calib_scale # scale trj for correct FOV
 
     x = MRISubspaceRecon.reconstruct_coilwise(data, trj_calib, calib_size; U, sample_mask=mask_calib, Niter_cg)
-    
+
     imdims = ntuple(i -> i, length(img_shape))
     kbp = fftshift(x, imdims)
     fft!(kbp, imdims)
@@ -64,7 +63,7 @@ function MRISubspaceRecon.reconstruct_coilwise(
 
     AᴴA = MRISubspaceRecon.NFFTNormalOp(img_shape, trj, U[:, 1]; sample_mask=sample_mask, verbose)
     xbp = MRISubspaceRecon.calculate_backprojection(data, trj, img_shape; U=U[:, 1], sample_mask=sample_mask, verbose)
-    
+
     Ncoil = size(data, 3)
     x = CUDA.zeros(Tc, img_shape..., Ncoil)
 

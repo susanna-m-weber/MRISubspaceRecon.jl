@@ -41,10 +41,9 @@ function calculate_coil_maps(
     verbose=false) where {N,T}
     @assert all([icalib .== nextprod((2, 3, 5), icalib) for icalib ∈ calib_size]) "calib_size has to be composed of the prime factors 2, 3, and 5 (cf. NonuniformFFTs.jl documentation)."
 
-    calib_scale = img_shape ./ calib_size
-    mask_calib = reshape(all(abs.(trj) .* calib_scale .< 0.5; dims=1), size(trj, 2), :)
+    trj_calib = trj .* T.(img_shape ./ calib_size) # scale trj for correct image dims
+    mask_calib = reshape(all(abs.(trj_calib) .< 0.5; dims=1), size(trj_calib, 2), :)
     mask_calib .&= sample_mask # new mask only takes data within calib region
-    trj_calib = trj .* T.(calib_scale) # scale trj for correct image dims
 
     x = reconstruct_coilwise(data, trj_calib, calib_size; U, sample_mask=mask_calib, Niter_cg)
 
@@ -136,7 +135,7 @@ function reconstruct_coilwise(
         cg!(xi, AᴴA, bi; maxiter=Niter_cg, verbose, reltol=0)
     end
     return x
-end                      
+end
 
 function reconstruct_coilwise(
     data::AbstractArray{Tc,3},
