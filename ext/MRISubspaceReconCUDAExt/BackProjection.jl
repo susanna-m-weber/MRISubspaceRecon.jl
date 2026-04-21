@@ -17,7 +17,7 @@ function MRISubspaceRecon.calculate_backprojection(data::CuArray{Tc,3}, trj::CuA
     data_temp = CuArray{Tc}(undef, sum(nsamp_t))
 
     # Apply sampling mask to data and perform backprojection
-    data_rs = data[sample_mask, :]
+    data_rs = @view data[sample_mask, :]
     threads, blocks = default_launch_config(nsamp_t)
     verbose && println("calculating backprojection...")
     flush(stdout)
@@ -53,7 +53,7 @@ function MRISubspaceRecon.calculate_backprojection(data::CuArray{Tc,3}, trj::CuA
     data_temp = CuArray{Tc}(undef, sum(nsamp_t))
 
     # Apply sampling sample_mask to data and perform backprojection
-    data_rs = data[sample_mask, :]
+    data_rs = @view data[sample_mask, :]
     threads, blocks = default_launch_config(nsamp_t)
     verbose && println("calculating backprojection...")
     flush(stdout)
