@@ -61,7 +61,11 @@ end
 ## ==========================================================================
 # 3) Read image data
 ## ==========================================================================
-println("\nReading image data...")
+# Enable readout oversampling removal in MRITwixTools (does it during reading,
+# so we never allocate the full oversampled array)
+twix.image.removeOS = true
+
+println("\nReading image data (with OS removal)...")
 data_raw = getdata(twix.image)
 println("Raw data size: $(size(data_raw))")
 println("Raw data type: $(eltype(data_raw))")
@@ -69,9 +73,9 @@ println("Raw data type: $(eltype(data_raw))")
 # Extract dimensions from fullSize
 # fullSize returns [NCol, NCha, NLin, NPar, NSli, NAve, NPhs, NEco, NRep, NSet, NSeg, ...]
 full_sz = fullSize(twix.image)
-Nr_raw = full_sz[1]    # number of ADC samples (includes 2x oversampling)
+Nr_raw = full_sz[1]    # NCol after OS removal (= Nx since removeOS=true)
 Ncoil = full_sz[2]     # number of receive coils
-Nr = 2 * Nx            # expected ADC samples with 2x oversampling
+Nr = Nx                # readout samples after OS removal = base resolution
 Ncyc = 3               # number of cycles (from filename "3cyc")
 
 # Determine Nt from data shape
@@ -99,49 +103,31 @@ println("  Total spokes:        $Nspokes_total")
 #   NCol = readout samples, NCha = coils, NLin = spoke index
 # We treat the spokes as being organized into Ncyc spokes per time frame × Nt frames.
 
-println("\n  Estimated raw data memory: $(round(sizeof(data_raw) / 1e9, digits=2)) GB")
+println("\n  Raw data memory: $(round(sizeof(data_raw) / 1e9, digits=2)) GB")
 
 # Reshape in-place (no copy) to collapse spoke dimensions
+# After removeOS, NCol = Nx (half the original oversampled readout)
 data_raw_rs = reshape(data_raw, Nr_raw, Ncoil, :)
 # data_raw_rs is (NCol, Ncoil, Nspokes_total) — just a view, no allocation
 
-# Handle readout oversampling: remove OS and permute in one step to save memory
-if Nr_raw > Nr
-    println("  Removing extra oversampling: Nr_raw=$Nr_raw -> Nr=$Nr")
-    # Allocate final array directly at target size
-    data = Array{ComplexF32}(undef, Nr, Nspokes_total, Ncoil)
-    # Process one coil at a time to limit memory usage
-    buf = Vector{ComplexF64}(undef, Nr_raw)
-    for icoil in 1:Ncoil
-        for ispoke in 1:Nspokes_total
-            # Copy one readout line
-            buf .= @view data_raw_rs[:, icoil, ispoke]
-            # IFFT in-place
-            ifft!(buf)
-            # Crop to remove oversampling
-            center = Nr_raw ÷ 2
-            idx_start = center - Nr ÷ 2 + 1
-            idx_end = center + Nr ÷ 2
-            cropped = buf[idx_start:idx_end]
-            # FFT back
-            fft!(cropped)
-            data[:, ispoke, icoil] .= ComplexF32.(cropped)
-        end
-    end
-elseif Nr_raw == Nr
-    # No oversampling removal needed — just permute and convert
-    # Permute (NCol, Ncoil, Nspokes) -> (NCol, Nspokes, Ncoil)
-    data = Array{ComplexF32}(undef, Nr, Nspokes_total, Ncoil)
-    for icoil in 1:Ncoil
-        data[:, :, icoil] .= ComplexF32.(@view data_raw_rs[:, icoil, :])
-    end
-else
-    println("  Warning: Nr_raw=$Nr_raw < expected Nr=$Nr, adjusting Nr")
+# Adjust Nr if it doesn't match what we got after OS removal
+if Nr_raw != Nr
+    println("  Note: Nr_raw=$Nr_raw after OS removal, adjusting Nr")
     Nr = Nr_raw
-    data = Array{ComplexF32}(undef, Nr, Nspokes_total, Ncoil)
-    for icoil in 1:Ncoil
-        data[:, :, icoil] .= ComplexF32.(@view data_raw_rs[:, icoil, :])
-    end
+end
+
+# Permute (NCol, Ncoil, Nspokes) -> (Nr*Ncyc, Nt, Ncoil) in one allocation
+# Allocate final array directly at target shape
+data = Array{ComplexF32}(undef, Nr * Ncyc, Nt, Ncoil)
+
+# Copy coil-by-coil to avoid permutedims allocation
+for icoil in 1:Ncoil
+    # View of this coil's data: (Nr_raw, Nspokes_total)
+    coil_data = @view data_raw_rs[:, icoil, :]
+    # Reshape spokes into (Nr, Ncyc*Nt) -> (Nr, Ncyc, Nt) -> (Nr*Ncyc, Nt)
+    coil_reshaped = reshape(coil_data, Nr, Ncyc, Nt)
+    coil_final = reshape(coil_reshaped, Nr * Ncyc, Nt)
+    data[:, :, icoil] .= ComplexF32.(coil_final)
 end
 
 # Free the original raw data to reclaim memory
@@ -149,10 +135,6 @@ data_raw = nothing
 data_raw_rs = nothing
 GC.gc()
 
-# Reshape spokes into (Ncyc, Nt) grouping, then flatten to (Nr*Ncyc, Nt, Ncoil)
-# For golden-ratio kooshball: spokes are sequential, grouped as (Ncyc per timeframe)
-data = reshape(data, Nr, Ncyc, Nt, Ncoil)
-data = reshape(data, Nr * Ncyc, Nt, Ncoil)
 println("  Data reshaped to: $(size(data))")
 println("  Data memory: $(round(sizeof(data) / 1e9, digits=2)) GB")
 
