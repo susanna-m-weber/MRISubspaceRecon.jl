@@ -22,7 +22,6 @@ echo "============================================================"
 
 
 # Activate the environment
-conda activate mri_recon_julia
 
 echo "Julia version: $(julia --version)"
 echo "Julia threads: auto"
