@@ -70,24 +70,36 @@ data_raw = getdata(twix.image)
 println("Raw data size: $(size(data_raw))")
 println("Raw data type: $(eltype(data_raw))")
 
-# Extract dimensions from fullSize
-# fullSize returns [NCol, NCha, NLin, NPar, NSli, NAve, NPhs, NEco, NRep, NSet, NSeg, ...]
+# Extract dimensions from the actual loaded data (accounts for removeOS)
+# data_raw from getdata is shaped according to sqzDims after OS removal
+data_sz = size(data_raw)
+println("\nLoaded data dimensions: $data_sz")
+
+# Also get fullSize for reference (note: fullSize reports pre-OS-removal NCol)
 full_sz = fullSize(twix.image)
-Nr_raw = full_sz[1]    # NCol after OS removal (= Nx since removeOS=true)
-Ncoil = full_sz[2]     # number of receive coils
-Nr = Nx                # readout samples after OS removal = base resolution
+println("fullSize (pre-OS removal): $full_sz")
+
+# Get actual dimensions from loaded data
+# First two dims are NCol (after OS removal) and NCha
+Nr_raw = data_sz[1]    # NCol after OS removal
+Ncoil = data_sz[2]     # number of receive coils
+Nr = Nr_raw            # readout samples = what we actually have
 Ncyc = 3               # number of cycles (from filename "3cyc")
 
-# Determine Nt from data shape
-# For radial/kooshball data: dims beyond Col and Cha encode spokes
-# Total spokes = Ncyc * Nt
-Nspokes_total = prod(full_sz[3:end])
+# Total spokes = everything beyond the first two dimensions
+Nspokes_total = prod(data_sz[3:end])
 Nt = Nspokes_total ÷ Ncyc
+
+# Update Nx based on actual readout length after OS removal
+if Nr_raw != Nx
+    println("  Note: Adjusting Nx from $Nx to $Nr_raw based on actual data after OS removal")
+    Nx = Nr_raw
+end
 
 println("\nDerived parameters:")
 println("  Nx (matrix size):    $Nx")
 println("  Nr_raw (ADC cols):   $Nr_raw")
-println("  Nr (expected):       $Nr")
+println("  Nr (readout pts):    $Nr")
 println("  Ncoil:               $Ncoil")
 println("  Ncyc:                $Ncyc")
 println("  Nt (time frames):    $Nt")
@@ -105,29 +117,38 @@ println("  Total spokes:        $Nspokes_total")
 
 println("\n  Raw data memory: $(round(sizeof(data_raw) / 1e9, digits=2)) GB")
 
-# Reshape in-place (no copy) to collapse spoke dimensions
-# After removeOS, NCol = Nx (half the original oversampled readout)
-data_raw_rs = reshape(data_raw, Nr_raw, Ncoil, :)
-# data_raw_rs is (NCol, Ncoil, Nspokes_total) — just a view, no allocation
+# Reshape to (NCol, Ncoil, Nspokes_total) — collapse all spoke/line dims
+# This is just a view (no allocation) as long as data is contiguous
+data_raw_rs = reshape(data_raw, Nr_raw, Ncoil, Nspokes_total)
 
-# Adjust Nr if it doesn't match what we got after OS removal
-if Nr_raw != Nr
-    println("  Note: Nr_raw=$Nr_raw after OS removal, adjusting Nr")
-    Nr = Nr_raw
-end
+# Verify divisibility
+@assert Nspokes_total % Ncyc == 0 "Total spokes ($Nspokes_total) not divisible by Ncyc ($Ncyc)"
+@assert Nspokes_total ÷ Ncyc == Nt "Spoke/cycle mismatch: $Nspokes_total / $Ncyc != $Nt"
 
-# Permute (NCol, Ncoil, Nspokes) -> (Nr*Ncyc, Nt, Ncoil) in one allocation
-# Allocate final array directly at target shape
+# Allocate final array directly at target shape: (Nr*Ncyc, Nt, Ncoil)
 data = Array{ComplexF32}(undef, Nr * Ncyc, Nt, Ncoil)
+println("  Allocating output: $(round(sizeof(data) / 1e9, digits=2)) GB")
 
-# Copy coil-by-coil to avoid permutedims allocation
+# Copy coil-by-coil, reshaping spokes into (Ncyc, Nt) groups
+# The spoke ordering is: spoke1_t1, spoke1_t2, ..., spoke1_tNt, spoke2_t1, ...
+# i.e., (Ncyc, Nt) when reshaped — but this depends on acquisition ordering.
+# For golden-ratio kooshball, spokes are sequential: (Nt, Ncyc) then permuted,
+# or simply (Nspokes_total) split as (Ncyc, Nt).
+# Try reshape as (Nr, Nspokes_total) -> (Nr, Ncyc, Nt) -> (Nr*Ncyc, Nt)
 for icoil in 1:Ncoil
-    # View of this coil's data: (Nr_raw, Nspokes_total)
-    coil_data = @view data_raw_rs[:, icoil, :]
-    # Reshape spokes into (Nr, Ncyc*Nt) -> (Nr, Ncyc, Nt) -> (Nr*Ncyc, Nt)
-    coil_reshaped = reshape(coil_data, Nr, Ncyc, Nt)
-    coil_final = reshape(coil_reshaped, Nr * Ncyc, Nt)
-    data[:, :, icoil] .= ComplexF32.(coil_final)
+    for it in 1:Nt
+        for icyc in 1:Ncyc
+            ispoke = (it - 1) * Ncyc + icyc  # spoke index assuming (Nt, Ncyc) ordering
+            src_idx = (icyc - 1) * Nt + it    # spoke index assuming (Ncyc, Nt) ordering
+            # Use the ordering that matches traj_kooshball_goldenratio:
+            # traj is generated as reshape(phi, Nt, Ncyc) then transposed to (Ncyc, Nt)
+            # So spokes are stored as: cyc1_t1, cyc2_t1, cyc3_t1, cyc1_t2, cyc2_t2, ...
+            spoke_idx = (it - 1) * Ncyc + icyc
+            out_row_start = (icyc - 1) * Nr + 1
+            out_row_end = icyc * Nr
+            data[out_row_start:out_row_end, it, icoil] .= ComplexF32.(@view data_raw_rs[:, icoil, spoke_idx])
+        end
+    end
 end
 
 # Free the original raw data to reclaim memory
@@ -148,8 +169,11 @@ Ncoeff = 4                  # number of subspace coefficients
 # img_shape = (Nx, Nx)
 
 println("\nReconstruction parameters:")
+println("  Nx:        $Nx")
+println("  Nr:        $Nr")
 println("  img_shape: $img_shape")
 println("  Ncoeff:    $Ncoeff")
+println("  Estimated image memory: $(round(sizeof(ComplexF32) * prod(img_shape) * Ncoeff / 1e9, digits=2)) GB")
 
 ## ==========================================================================
 # 6) Load subspace basis
