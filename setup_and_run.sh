@@ -66,12 +66,12 @@ julia --project=environments/inspect --threads=auto inspect_rawdata.jl
 ## --------------------------------------------------------------------------
 # 4) Run the grog_recon_visualize test script
 ## --------------------------------------------------------------------------
-echo ""
-echo "============================================================"
-echo "  STEP 4: Running grog_recon_visualize.jl (test with phantom)"
-echo "============================================================"
+# echo ""
+# echo "============================================================"
+# echo "  STEP 4: Running grog_recon_visualize.jl (test with phantom)"
+# echo "============================================================"
 
-julia --project=environments/test_visualize --threads=auto test/grog_recon_visualize.jl
+# julia --project=environments/test_visualize --threads=auto test/grog_recon_visualize.jl
 
 ## --------------------------------------------------------------------------
 # 5) Run the full bhsFP reconstruction
