@@ -86,4 +86,4 @@ julia --project=environments/recon --threads=auto reconstruct_bhsfp_grog.jl
 echo ""
 echo "============================================================"
 echo "  ALL DONE"
-echo "============================================================"
+echo "============================================================"  cy;okhvmb 
