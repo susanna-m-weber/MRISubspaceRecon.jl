@@ -27,7 +27,8 @@ end
 ## ==========================================================================
 # 2) General file info
 ## ==========================================================================
-println("\n─"^70)
+println()
+println("─"^70)
 println("  SCAN TYPES")
 println("─"^70)
 for field in propertynames(twix)
@@ -41,7 +42,8 @@ end
 ## ==========================================================================
 # 3) Image data dimensions
 ## ==========================================================================
-println("\n─"^70)
+println()
+println("─"^70)
 println("  IMAGE DATA DIMENSIONS")
 println("─"^70)
 
@@ -66,7 +68,8 @@ println("  Acquisitions:  $(twix.image.meta.NAcq)")
 ## ==========================================================================
 # 4) Header parameters
 ## ==========================================================================
-println("\n─"^70)
+println()
+println("─"^70)
 println("  PROTOCOL PARAMETERS")
 println("─"^70)
 
@@ -85,7 +88,8 @@ try; println("  Protocol:          $(twix.hdr.MeasYaps.tProtocolName)"); catch; 
 ## ==========================================================================
 # 5) Trajectory & timing info
 ## ==========================================================================
-println("\n─"^70)
+println()
+println("─"^70)
 println("  TRAJECTORY INFO")
 println("─"^70)
 
@@ -102,7 +106,8 @@ println("  Reflected readouts:   $(sum(meta.IsReflected)) / $(meta.NAcq)")
 ## ==========================================================================
 # 6) Subspace basis info (if available)
 ## ==========================================================================
-println("\n─"^70)
+println()
+println("─"^70)
 println("  SUBSPACE BASIS")
 println("─"^70)
 
@@ -125,7 +130,8 @@ end
 ## ==========================================================================
 # 7) Suggested reconstruction parameters
 ## ==========================================================================
-println("\n─"^70)
+println()
+println("─"^70)
 println("  SUGGESTED RECON PARAMETERS")
 println("─"^70)
 
@@ -140,6 +146,7 @@ println("  Ncoeff:      4")
 println("  Data memory: $(round(sizeof(ComplexF32) * Nr_raw * Nspokes_total * Ncoil / 1e9, digits=2)) GB")
 println("  Image memory (3D): $(round(sizeof(ComplexF32) * Nx_est^3 * 4 / 1e9, digits=2)) GB")
 
-println("\n", "="^70)
+println()
+println("="^70)
 println("  DONE")
 println("="^70)
