@@ -327,7 +327,8 @@ println("  HEADER SEARCH")
 println("─"^70)
 
 search_terms = ["BaseResolution", "Radial", "Spokes", "Repetitions",
-                "FlipAngle", "Bandwidth", "FieldStrength"]
+                "FlipAngle", "Bandwidth", "FieldStrength",
+                "alTR", "alTE", "FOV", "DwellTime", "Thickness"]
 
 for term in search_terms
     println("\n  Search: \"$term\"")
