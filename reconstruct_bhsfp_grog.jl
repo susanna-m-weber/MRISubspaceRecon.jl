@@ -114,10 +114,31 @@ println("Available keys in basis file: ", collect(keys(basis_data)))
 U = ComplexF32.(basis_data["U"])
 println("Basis \"U\" size: $(size(U)) — (Nt_basis, Ncoeff_max)")
 
-# The basis Nt defines the number of time frames for reconstruction
-Nt = size(U, 1)
-Ncyc = Nspokes_total ÷ Nt
-@assert Nspokes_total % Nt == 0 "Total spokes ($Nspokes_total) not divisible by Nt ($Nt) from basis"
+# Determine Nt and Ncyc from data and basis
+# The basis has Nt_basis rows, but the data may have slightly fewer usable time frames
+# due to dummy scans or preparation pulses.
+# We know from the header that lRadialViews = 60 (spokes per time frame)
+Nt_basis = size(U, 1)
+
+# Try to determine Ncyc from header (lRadialViews)
+Ncyc = try
+    Int(twix.hdr["MeasYaps.sKSpace.lRadialViews"])
+catch
+    # Fallback: find largest Ncyc that divides Nspokes_total and gives Nt <= Nt_basis
+    local ncyc_candidates = [n for n in 1:200 if Nspokes_total % n == 0 && Nspokes_total ÷ n <= Nt_basis]
+    isempty(ncyc_candidates) ? error("Cannot determine Ncyc") : last(ncyc_candidates)
+end
+
+Nt = Nspokes_total ÷ Ncyc
+@assert Nspokes_total % Ncyc == 0 "Total spokes ($Nspokes_total) not divisible by Ncyc ($Ncyc)"
+
+if Nt > Nt_basis
+    error("Data Nt ($Nt) exceeds basis Nt ($Nt_basis). Check Ncyc or basis file.")
+end
+
+if Nt < Nt_basis
+    println("  Note: Basis has $Nt_basis time frames, data has $Nt. Using first $Nt rows of U.")
+end
 
 println("\nFinal parameters:")
 println("  Nt (from basis):     $Nt")
