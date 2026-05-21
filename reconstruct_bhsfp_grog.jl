@@ -182,20 +182,33 @@ basis_file = joinpath(@__DIR__, "bases_network_3T_R01_brain.jld2")
 println("\nLoading subspace basis from: $basis_file")
 basis_data = load(basis_file)
 
-# Print available keys to help identify the correct variable name
-println("Available keys in basis file: ", keys(basis_data))
+# Print available keys
+println("Available keys in basis file: ", collect(keys(basis_data)))
 
-# Adjust the key below to match your file (e.g., "U", "basis", "Phi", etc.)
-# U should be of size (Nt, Ncoeff)
-U = first(values(basis_data))
-if ndims(U) == 1
-    U = reshape(U, :, 1)
+# Load the subspace basis matrix "U" — size (Nt_basis, Ncoeff_max)
+U = ComplexF32.(basis_data["U"])
+println("Basis \"U\" size: $(size(U)) — (Nt_basis, Ncoeff_max)")
+
+# The basis Nt defines the number of time frames for reconstruction
+Nt_basis = size(U, 1)
+println("Nt from basis: $Nt_basis")
+
+# Update Nt to match the basis — the data Nt was derived from total spokes,
+# but the actual temporal dimension for subspace reconstruction is Nt_basis
+if Nt != Nt_basis
+    println("\n  Note: Recalculating Ncyc from data.")
+    println("  Data total spokes: $Nspokes_total")
+    println("  Basis Nt: $Nt_basis")
+    Ncyc_new = Nspokes_total ÷ Nt_basis
+    println("  New Ncyc (= total_spokes / Nt_basis): $Ncyc_new")
+    Ncyc = Ncyc_new
+    Nt = Nt_basis
+    println("  Updated: Nt=$Nt, Ncyc=$Ncyc")
 end
-if size(U, 1) < Nt
-    error("Basis has $(size(U,1)) time frames but data has Nt=$Nt. Check parameters.")
-end
-U = ComplexF32.(U[1:Nt, 1:Ncoeff])
-println("Subspace basis size: $(size(U)) — (Nt, Ncoeff)")
+
+# Select the number of subspace coefficients
+U = U[1:Nt, 1:Ncoeff]
+println("Subspace basis used: $(size(U)) — (Nt, Ncoeff)")
 
 ## ==========================================================================
 # 7) Generate trajectory
