@@ -44,7 +44,7 @@ heatmap!(p, abs.(x[:,:,2]), subplot=2, ticks=[], colorbar=false, title="coeff. 2
 # Next, we set up a set of coil maps and a trajectory for data acquisition. We then generate a set of basis functions. The non-Cartesian methods
 # use float trajectories in range $k \in [-0.5, 0.5)$, as opposed to integer trajectories for Cartesian methods.
 ## coil maps as vector of complex arrays
-cmaps = [ones(ComplexF32, Nx, Nx); ones(ComplexF32, Nx, Nx) .* ComplexF32.(exp(1im * π / 2))]
+cmaps = [ones(CuArray, Nx, Nx); ones(ComplexF32, Nx, Nx) .* ComplexF32.(exp(1im * π / 2))]
 println("typeof(cmaps) = $(typeof(cmaps))")
 println("size(cmaps) = $(size(cmaps))")
 
@@ -60,7 +60,7 @@ println(typeof(data))  # Array{ComplexF32, 2}
 data_gpu = CuArray(data)
 println(typeof(data_gpu))  # CuArray{ComplexF32, 2, CUDA.DeviceMemory}
 
-println("Data on GPU: ", data isa CuArray)
+println("Data on GPU: ", data_gpu isa CuArray)
 println("Coil maps on GPU: ", cmaps[1] isa CuArray)
 println("Trajectory on GPU: ", trj isa CuArray)
 
