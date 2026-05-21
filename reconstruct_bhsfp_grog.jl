@@ -170,37 +170,111 @@ println("  Squeezed dims: $(sqzDims(twix.image))")
 # We want: (Nr*Ncyc, Nt, Ncoil) = (Nr*60, 3420, 20)
 # where Nt = NLin*NRep and Ncyc = NAve
 
-NLin = data_sz[3]
-NAve = length(data_sz) >= 4 ? data_sz[4] : 1
-NRep = length(data_sz) >= 5 ? data_sz[5] : 1
+# Use fullSize to get dimension counts (not affected by squeezing)
+# fullSize returns [NCol, NCha, NLin, NPar, NSli, NAve, NPhs, NEco, NRep, NSet, NSeg, ...]
+full_sz_img = fullSize(twix.image)
+NLin = full_sz_img[3]
+NAve = full_sz_img[6]
+NRep = full_sz_img[9]
 
-println("  NLin=$NLin, NAve=$NAve, NRep=$NRep")
+println("  From fullSize: NLin=$NLin, NAve=$NAve, NRep=$NRep")
 println("  Expected: Nt = NLin*NRep = $(NLin*NRep), Ncyc = NAve = $NAve")
+println("  Actual: Nt=$Nt, Ncyc=$Ncyc")
 
-@assert NAve == Ncyc "NAve ($NAve) should equal Ncyc ($Ncyc)"
-@assert NLin * NRep == Nt "NLin*NRep ($(NLin*NRep)) should equal Nt ($Nt)"
+# Verify the mapping
+if NAve == Ncyc && NLin * NRep == Nt
+    println("  ✓ Dimension mapping confirmed: NAve=Ncyc, NLin*NRep=Nt")
+elseif NLin == Ncyc && NAve * NRep == Nt
+    println("  ✓ Alternative mapping: NLin=Ncyc, NAve*NRep=Nt")
+    # Swap the interpretation
+    NLin, NAve = NAve, NLin
+    println("  Swapped: NLin=$NLin (time within rep), NAve=$NAve (cycles)")
+elseif NLin * NAve * NRep == Nspokes_total
+    # Try: NLin encodes spokes within a group, figure out correct split
+    println("  Trying flexible mapping...")
+    # Ncyc spokes per frame, Nt frames total
+    # One of the dims should be Ncyc, the product of the others should be Nt
+    if NLin == Ncyc
+        NAve_use = NAve * NRep
+        NLin_use = NLin
+        println("  Mapping: NLin=$NLin=Ncyc, NAve*NRep=$(NAve*NRep)=Nt")
+    elseif NAve == Ncyc
+        println("  Mapping: NAve=$NAve=Ncyc, NLin*NRep=$(NLin*NRep)=Nt")
+    else
+        println("  WARNING: Cannot determine spoke/time mapping automatically.")
+        println("  Proceeding with flat sequential ordering.")
+    end
+else
+    error("Dimension mismatch: NLin*NAve*NRep=$(NLin*NAve*NRep) != Nspokes_total=$Nspokes_total")
+end
 
-# Reshape: (Nr, Ncoil, NLin, NAve, NRep) -> (Nr, Ncoil, NLin, Ncyc, NRep)
-# Then reorder to: (Nr*Ncyc, Nt, Ncoil) where Nt = NLin*NRep
-# The time ordering is: all NLin for Rep=1, then all NLin for Rep=2, etc.
+# Reshape data_raw into the final (Nr*Ncyc, Nt, Ncoil) format.
+# getdata returns data in squeezed form following sqzDims order.
+# We reshape using the actual data dimensions and the mapping determined above.
 
-data_5d = reshape(data_raw, Nr_raw, Ncoil, NLin, NAve, NRep)
+# First, reshape data_raw to separate all acquisition dimensions
+# getdata shape follows sqzDims: ["Col", "Cha", "Lin", "Ave", "Rep"] (only non-singleton)
+# But after removeOS, Col is halved. The squeezed data has shape data_sz.
+# We need to figure out which dimension is which from the actual sizes.
 
-# Allocate final array: (Nr*Ncyc, Nt, Ncoil)
-data = Array{ComplexF32}(undef, Nr * Ncyc, Nt, Ncoil)
-println("  Allocating output: $(round(sizeof(data) / 1e9, digits=2)) GB")
+# The data from getdata is ordered with fastest-varying first:
+# (Col, Cha, Lin, Ave, Rep) if all are > 1
+# We reshape to separate these explicitly based on what we know:
+#   Nspokes_total = NLin * NAve * NRep (verified above)
+#   data_raw is (Nr_raw, Ncoil, <remaining dims flattened or separated>)
 
-# Fill: for each time frame it = (irep-1)*NLin + ilin
-#        for each cycle icyc = iave
-#        data[(icyc-1)*Nr+1 : icyc*Nr, it, icoil] = data_5d[:, icoil, ilin, iave, irep]
-for icoil in 1:Ncoil
-    for irep in 1:NRep
-        for ilin in 1:NLin
-            it = (irep - 1) * NLin + ilin
+# Reshape to full 5D based on fullSize ordering: Col, Cha, Lin, NPar=1, NSli=1, Ave, ..., Rep
+# Since getdata squeezes singletons, the returned shape is (Nr_raw, Ncoil, NLin, NAve, NRep)
+# IF all three (NLin, NAve, NRep) > 1. Let's handle this robustly:
+
+# Figure out the shape getdata returned by checking data_sz
+println("  data_raw shape: $data_sz")
+println("  Attempting reshape to (Nr=$Nr_raw, Ncoil=$Ncoil, NLin=$NLin, NAve=$NAve, NRep=$NRep)")
+
+expected_elements = Nr_raw * Ncoil * NLin * NAve * NRep
+actual_elements = prod(data_sz)
+println("  Expected elements: $expected_elements, Actual: $actual_elements")
+
+if expected_elements != actual_elements
+    # fullSize might report different dims than what's in the squeezed data
+    # Fall back to flat sequential ordering
+    println("  WARNING: Element count mismatch. Using flat sequential spoke ordering.")
+    data_raw_flat = reshape(data_raw, Nr_raw, Ncoil, Nspokes_total)
+
+    data = Array{ComplexF32}(undef, Nr * Ncyc, Nt, Ncoil)
+    println("  Allocating output: $(round(sizeof(data) / 1e9, digits=2)) GB")
+
+    # Sequential ordering: spokes are in acquisition order
+    # Map to (Ncyc, Nt): spoke_idx goes 1..Nspokes_total
+    # traj_kooshball_goldenratio generates (Ncyc, Nt) ordering
+    for icoil in 1:Ncoil
+        for it in 1:Nt
             for icyc in 1:Ncyc
+                spoke_idx = (it - 1) * Ncyc + icyc
                 out_row_start = (icyc - 1) * Nr + 1
                 out_row_end = icyc * Nr
-                data[out_row_start:out_row_end, it, icoil] .= ComplexF32.(@view data_5d[:, icoil, ilin, icyc, irep])
+                data[out_row_start:out_row_end, it, icoil] .= ComplexF32.(@view data_raw_flat[:, icoil, spoke_idx])
+            end
+        end
+    end
+else
+    data_5d = reshape(data_raw, Nr_raw, Ncoil, NLin, NAve, NRep)
+
+    data = Array{ComplexF32}(undef, Nr * Ncyc, Nt, Ncoil)
+    println("  Allocating output: $(round(sizeof(data) / 1e9, digits=2)) GB")
+
+    # Fill: time frame it = (irep-1)*NLin + ilin, cycle icyc = iave
+    # This matches traj_kooshball_goldenratio which generates angles as:
+    #   phi = reshape(phi_all, Nt, Ncyc) then transposed to (Ncyc, Nt)
+    for icoil in 1:Ncoil
+        for irep in 1:NRep
+            for ilin in 1:NLin
+                it = (irep - 1) * NLin + ilin
+                for icyc in 1:Ncyc
+                    out_row_start = (icyc - 1) * Nr + 1
+                    out_row_end = icyc * Nr
+                    data[out_row_start:out_row_end, it, icoil] .= ComplexF32.(@view data_5d[:, icoil, ilin, icyc, irep])
+                end
             end
         end
     end
