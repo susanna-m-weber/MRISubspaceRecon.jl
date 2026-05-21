@@ -106,13 +106,29 @@ catch
     println("  Readout oversampling:      [not found] (typically 2x)")
 end
 
-# FOV
+# FOV — try multiple common paths
+fov_found = false
 try
     fov_read = twix.hdr.MeasYaps.sSliceArray.asSlice[1].dReadoutFOV
     fov_phase = twix.hdr.MeasYaps.sSliceArray.asSlice[1].dPhaseFOV
     println("  FOV readout:               $fov_read mm")
     println("  FOV phase:                 $fov_phase mm")
-catch
+    fov_found = true
+catch; end
+if !fov_found
+    try
+        fov_read = twix.hdr.MeasYaps.sSliceArray.lSize
+        println("  sSliceArray.lSize:         $fov_read")
+    catch; end
+    try
+        fov_read = twix.hdr.Phoenix.sSliceArray.asSlice[1].dReadoutFOV
+        fov_phase = twix.hdr.Phoenix.sSliceArray.asSlice[1].dPhaseFOV
+        println("  FOV readout (Phoenix):     $fov_read mm")
+        println("  FOV phase (Phoenix):       $fov_phase mm")
+        fov_found = true
+    catch; end
+end
+if !fov_found
     println("  FOV:                       [not found]")
 end
 
@@ -121,22 +137,47 @@ try
     thickness = twix.hdr.MeasYaps.sSliceArray.asSlice[1].dThickness
     println("  Slice thickness:           $thickness mm")
 catch
-    println("  Slice thickness:           [not found]")
+    try
+        thickness = twix.hdr.Phoenix.sSliceArray.asSlice[1].dThickness
+        println("  Slice thickness (Phoenix): $thickness mm")
+    catch
+        println("  Slice thickness:           [not found]")
+    end
 end
 
-# TR / TE
+# TR / TE — try multiple paths
 try
     TR = twix.hdr.MeasYaps.alTR[1]
     println("  TR:                        $TR μs ($(TR/1000) ms)")
 catch
-    println("  TR:                        [not found]")
+    try
+        TR = twix.hdr.Phoenix.alTR[1]
+        println("  TR (Phoenix):              $TR μs ($(TR/1000) ms)")
+    catch
+        # Try searching
+        try
+            results = search(twix.hdr, "alTR")
+            if !isempty(results)
+                println("  TR path found:             $(first(results))")
+            else
+                println("  TR:                        [not found]")
+            end
+        catch
+            println("  TR:                        [not found]")
+        end
+    end
 end
 
 try
     TE = twix.hdr.MeasYaps.alTE[1]
     println("  TE:                        $TE μs ($(TE/1000) ms)")
 catch
-    println("  TE:                        [not found]")
+    try
+        TE = twix.hdr.Phoenix.alTE[1]
+        println("  TE (Phoenix):              $TE μs ($(TE/1000) ms)")
+    catch
+        println("  TE:                        [not found]")
+    end
 end
 
 # Flip angle
@@ -144,16 +185,26 @@ try
     fa = twix.hdr.MeasYaps.adFlipAngleDegree[1]
     println("  Flip angle:                $fa°")
 catch
-    println("  Flip angle:                [not found]")
+    try
+        fa = twix.hdr.Phoenix.adFlipAngleDegree[1]
+        println("  Flip angle (Phoenix):      $fa°")
+    catch
+        println("  Flip angle:                [not found]")
+    end
 end
 
-# Bandwidth
+# Bandwidth / Dwell time
 try
     bw = twix.hdr.MeasYaps.sRXSPEC.alDwellTime[1]
     println("  Dwell time:                $bw ns")
     println("  Bandwidth/pixel:           $(round(1e9 / (bw * Nr_raw), digits=1)) Hz/px")
 catch
-    println("  Bandwidth:                 [not found]")
+    try
+        bw = twix.hdr.Phoenix.sRXSPEC.alDwellTime[1]
+        println("  Dwell time (Phoenix):      $bw ns")
+    catch
+        println("  Bandwidth:                 [not found]")
+    end
 end
 
 # Sequence name
@@ -161,7 +212,12 @@ try
     seq = twix.hdr.MeasYaps.tSequenceFileName
     println("  Sequence:                  $seq")
 catch
-    println("  Sequence:                  [not found]")
+    try
+        seq = twix.hdr.Phoenix.tSequenceFileName
+        println("  Sequence (Phoenix):        $seq")
+    catch
+        println("  Sequence:                  [not found]")
+    end
 end
 
 # Protocol name
@@ -169,8 +225,16 @@ try
     prot = twix.hdr.MeasYaps.tProtocolName
     println("  Protocol name:             $prot")
 catch
-    println("  Protocol name:             [not found]")
+    try
+        prot = twix.hdr.Phoenix.tProtocolName
+        println("  Protocol name (Phoenix):   $prot")
+    catch
+        println("  Protocol name:             [not found]")
+    end
 end
+
+# Diagnostic: show available top-level header sections
+println("\n  Available header sections: ", collect(keys(twix.hdr)))
 
 ## ==========================================================================
 # 5) Trajectory & timing info
