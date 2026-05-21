@@ -58,13 +58,9 @@ println(typeof(data))  # Array{ComplexF32, 2}
 
 # GPU arrays
 data_gpu = CuArray(data)
-cmaps = CuArray(cmaps)
-trj = CuArray(trj)
 println(typeof(data_gpu))  # CuArray{ComplexF32, 2, CUDA.DeviceMemory}
 
-println("Data on GPU: ", data_gpu isa CuArray)
-println("Coil maps on GPU: ", cmaps isa CuArray)
-println("Trajectory on GPU: ", trj isa CuArray)
+
 
 ## set up basis functions
 U = randn(ComplexF32, Nt, Nc)
