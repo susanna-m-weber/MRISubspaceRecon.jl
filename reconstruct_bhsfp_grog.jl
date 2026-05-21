@@ -149,37 +149,66 @@ println("  Nr:                  $Nr")
 ## ==========================================================================
 # 4) Reshape data for reconstruction
 ## ==========================================================================
-# getdata returns data shaped according to sqzDims.
-# We need to reshape to (Nr*Ncyc, Nt, Ncoil) for the reconstruction pipeline.
+# getdata returns data shaped as (NCol, NCha, NLin, NAve, NRep) [squeezed]
+# From the header and dimensions:
+#   NLin=1140, NAve=60, NRep=3
+#   Nt = NLin * NRep = 1140 * 3 = 3420 (time frames)
+#   Ncyc = NAve = 60 (spokes per time frame)
+#
+# The trajectory (traj_kooshball_goldenratio) generates spokes sequentially
+# across all time frames: spoke ordering is (Ncyc, Nt) = (60, 3420)
+# i.e., for each time frame, Ncyc spokes are acquired.
+#
+# In the raw data: the "Ave" dimension corresponds to the Ncyc spokes per frame,
+# and "Lin" × "Rep" together form the Nt time frames.
 
 println("\n  Raw data memory: $(round(sizeof(data_raw) / 1e9, digits=2)) GB")
+println("  Raw data shape: $(size(data_raw))")
+println("  Squeezed dims: $(sqzDims(twix.image))")
 
-# Reshape to (NCol, Ncoil, Nspokes_total) — collapse all spoke/line dims
-data_raw_rs = reshape(data_raw, Nr_raw, Ncoil, Nspokes_total)
+# data_raw shape is (NCol, NCha, NLin, NAve, NRep) = (Nr, Ncoil, 1140, 60, 3)
+# We want: (Nr*Ncyc, Nt, Ncoil) = (Nr*60, 3420, 20)
+# where Nt = NLin*NRep and Ncyc = NAve
 
-# Allocate final array directly at target shape: (Nr*Ncyc, Nt, Ncoil)
+NLin = data_sz[3]
+NAve = length(data_sz) >= 4 ? data_sz[4] : 1
+NRep = length(data_sz) >= 5 ? data_sz[5] : 1
+
+println("  NLin=$NLin, NAve=$NAve, NRep=$NRep")
+println("  Expected: Nt = NLin*NRep = $(NLin*NRep), Ncyc = NAve = $NAve")
+
+@assert NAve == Ncyc "NAve ($NAve) should equal Ncyc ($Ncyc)"
+@assert NLin * NRep == Nt "NLin*NRep ($(NLin*NRep)) should equal Nt ($Nt)"
+
+# Reshape: (Nr, Ncoil, NLin, NAve, NRep) -> (Nr, Ncoil, NLin, Ncyc, NRep)
+# Then reorder to: (Nr*Ncyc, Nt, Ncoil) where Nt = NLin*NRep
+# The time ordering is: all NLin for Rep=1, then all NLin for Rep=2, etc.
+
+data_5d = reshape(data_raw, Nr_raw, Ncoil, NLin, NAve, NRep)
+
+# Allocate final array: (Nr*Ncyc, Nt, Ncoil)
 data = Array{ComplexF32}(undef, Nr * Ncyc, Nt, Ncoil)
 println("  Allocating output: $(round(sizeof(data) / 1e9, digits=2)) GB")
 
-# Copy coil-by-coil, reshaping spokes into (Ncyc, Nt) groups
-# Spoke ordering matches traj_kooshball_goldenratio:
-#   traj is generated as reshape(phi, Nt, Ncyc) then transposed to (Ncyc, Nt)
-#   So spokes are stored as: cyc1_t1, cyc2_t1, ..., cycN_t1, cyc1_t2, ...
-#   i.e., spoke_idx = (it - 1) * Ncyc + icyc
+# Fill: for each time frame it = (irep-1)*NLin + ilin
+#        for each cycle icyc = iave
+#        data[(icyc-1)*Nr+1 : icyc*Nr, it, icoil] = data_5d[:, icoil, ilin, iave, irep]
 for icoil in 1:Ncoil
-    for it in 1:Nt
-        for icyc in 1:Ncyc
-            spoke_idx = (it - 1) * Ncyc + icyc
-            out_row_start = (icyc - 1) * Nr + 1
-            out_row_end = icyc * Nr
-            data[out_row_start:out_row_end, it, icoil] .= ComplexF32.(@view data_raw_rs[:, icoil, spoke_idx])
+    for irep in 1:NRep
+        for ilin in 1:NLin
+            it = (irep - 1) * NLin + ilin
+            for icyc in 1:Ncyc
+                out_row_start = (icyc - 1) * Nr + 1
+                out_row_end = icyc * Nr
+                data[out_row_start:out_row_end, it, icoil] .= ComplexF32.(@view data_5d[:, icoil, ilin, icyc, irep])
+            end
         end
     end
 end
 
 # Free the original raw data to reclaim memory
 data_raw = nothing
-data_raw_rs = nothing
+data_5d = nothing
 GC.gc()
 
 println("  Data reshaped to: $(size(data))")
