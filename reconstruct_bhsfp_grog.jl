@@ -263,18 +263,76 @@ else
     data = Array{ComplexF32}(undef, Nr * Ncyc, Nt, Ncoil)
     println("  Allocating output: $(round(sizeof(data) / 1e9, digits=2)) GB")
 
-    # Fill: time frame it = (irep-1)*NLin + ilin, cycle icyc = iave
-    # This matches traj_kooshball_goldenratio which generates angles as:
-    #   phi = reshape(phi_all, Nt, Ncyc) then transposed to (Ncyc, Nt)
+    # The trajectory traj_kooshball_goldenratio generates angles as:
+    #   phi_flat = golden_angle * (0:Ncyc*Nt-1)
+    #   phi = reshape(phi_flat, Nt, Ncyc)  -- first fills along Nt, then Ncyc
+    #   traj_kooshball(Nr, phi', ...)       -- transpose to (Ncyc, Nt)
+    #
+    # After reshape(trj, 3, Nr*Ncyc, Nt), the first dim of data corresponds to:
+    #   data[1:Nr, it, :] = spoke with angle index (it-1)         [icyc=1]
+    #   data[Nr+1:2Nr, it, :] = spoke with angle index Nt+(it-1)  [icyc=2]
+    #   ...
+    #   data[(icyc-1)*Nr+1:icyc*Nr, it, :] = angle index (icyc-1)*Nt + (it-1)
+    #
+    # So the flat spoke index for data position (icyc, it) is:
+    #   spoke_sequential = (icyc-1)*Nt + it  (1-based)
+    #
+    # The data from the scanner is acquired sequentially in time:
+    #   acquisition order = spoke 1, spoke 2, ..., spoke Nspokes_total
+    #   which maps to data_5d indices: ilin=1..NLin, iave=1..NAve, irep=1..NRep
+    #   in column-major order: ilin varies fastest, then iave, then irep
+    #   so flat_acq_idx = (irep-1)*NLin*NAve + (iave-1)*NLin + ilin
+    #
+    # The trajectory sequential spoke index is:
+    #   flat_trj_idx = (icyc-1)*Nt + it = (icyc-1)*Nt + (irep-1)*NLin + ilin
+    #
+    # For these to match, we need:
+    #   flat_acq_idx == flat_trj_idx
+    #   (irep-1)*NLin*NAve + (iave-1)*NLin + ilin == (icyc-1)*Nt + (irep-1)*NLin + ilin
+    #   This simplifies if icyc=iave and the rep ordering aligns.
+    #
+    # Actually, the acquisition order is simply sequential:
+    #   spoke 1, spoke 2, ..., spoke 205200
+    # And the trajectory also generates angles sequentially:
+    #   angle_idx 0, 1, 2, ..., 205199
+    # The reshape into (Ncyc, Nt) is just a bookkeeping convention.
+    #
+    # So the simplest correct approach: map flat acquisition index to (icyc, it)
+    # using the same reshape convention as the trajectory:
+    #   phi = reshape(phi_flat, Nt, Ncyc) then transpose
+    #   means: flat_idx -> (it, icyc) via column-major reshape(1:N, Nt, Ncyc)
+    #   i.e., flat_idx = (icyc-1)*Nt + it
+    #
+    # And the acquisition flat index (column-major through data_5d dims 3,4,5):
+    #   flat_acq = (irep-1)*NLin*NAve + (iave-1)*NLin + ilin
+    #
+    # So we need: (icyc-1)*Nt + it == (irep-1)*NLin*NAve + (iave-1)*NLin + ilin
+    #   where it = (irep-1)*NLin + ilin (our previous mapping)
+    #   gives: (icyc-1)*Nt + (irep-1)*NLin + ilin
+    #        = (iave-1)*NLin*NRep + (irep-1)*NLin + ilin  [if icyc=iave, Nt=NLin*NRep]
+    #   But the actual acq order: (irep-1)*NLin*NAve + (iave-1)*NLin + ilin
+    #   These DON'T match unless we swap the role of iave and irep in 'it'.
+    #
+    # Correct mapping: the acquisition visits all Ave for each Lin within each Rep:
+    #   flat_acq = (irep-1)*NLin*NAve + (iave-1)*NLin + ilin  [ilin fastest]
+    #   = ilin + (iave-1)*NLin + (irep-1)*NLin*NAve
+    #
+    # We need this to equal: (icyc-1)*Nt + it where it=1..Nt, icyc=1..Ncyc
+    # If icyc maps to what varies in the middle (iave cycling through NLin blocks):
+    #   Actually let's just use flat sequential ordering — it's the safest.
+
+    # Use flat sequential ordering: data is in acquisition order,
+    # trajectory is in sequential angle order. Both use the same sequence.
+    data_flat = reshape(data_raw, Nr_raw, Ncoil, Nspokes_total)
+
     for icoil in 1:Ncoil
-        for irep in 1:NRep
-            for ilin in 1:NLin
-                it = (irep - 1) * NLin + ilin
-                for icyc in 1:Ncyc
-                    out_row_start = (icyc - 1) * Nr + 1
-                    out_row_end = icyc * Nr
-                    data[out_row_start:out_row_end, it, icoil] .= ComplexF32.(@view data_5d[:, icoil, ilin, icyc, irep])
-                end
+        for it in 1:Nt
+            for icyc in 1:Ncyc
+                # Trajectory convention: flat_spoke = (icyc-1)*Nt + it
+                spoke_idx = (icyc - 1) * Nt + it
+                out_row_start = (icyc - 1) * Nr + 1
+                out_row_end = icyc * Nr
+                data[out_row_start:out_row_end, it, icoil] .= ComplexF32.(@view data_flat[:, icoil, spoke_idx])
             end
         end
     end
