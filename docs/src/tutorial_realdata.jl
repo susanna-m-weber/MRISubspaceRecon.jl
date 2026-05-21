@@ -11,6 +11,7 @@ using NonuniformFFTs
 using LinearAlgebra
 using JLD2
 using Plots
+using CUDA
 
 # # 1) Load raw data
 raw_file = joinpath(@__DIR__, "..", "..", "..", "..", "meas_MID00158_FID02539_MT_bhsfp_BPJA01_3cyc.dat")

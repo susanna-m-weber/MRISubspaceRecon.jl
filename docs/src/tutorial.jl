@@ -18,6 +18,7 @@ using ImagePhantoms
 using NonuniformFFTs
 using Random
 using LinearAlgebra
+using CUDA
 
 Nx = 32
 Nc = 2 # nr of coefficients in the temporal subspace
