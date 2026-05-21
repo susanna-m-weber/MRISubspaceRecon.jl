@@ -33,6 +33,8 @@ x[:, :, 2] = shepp_logan(Nx)
 
 p = heatmap(abs.(x[:,:,1]), layout=(1,2), subplot=1, ticks=[], colorbar=false, size=(700,350), title="coeff. 1")
 heatmap!(p, abs.(x[:,:,2]), subplot=2, ticks=[], colorbar=false, title="coeff. 2")
+savefig("test_coeff.png")
+
 #md Main.HTMLPlot(p) #hide
 # Next, we set up a set of coil maps and a trajectory for data acquisition. We then generate a set of basis functions. The non-Cartesian methods
 # use float trajectories in range $k \in [-0.5, 0.5)$, as opposed to integer trajectories for Cartesian methods.
@@ -97,6 +99,7 @@ println("size(b) = $(size(b))")
 
 p = heatmap(abs.(b[:,:,1]), layout=(1,2), subplot=1, ticks=[], colorbar=false, title="coeff. 1", size=(700,350))
 heatmap!(p, abs.(b[:,:,2]), subplot=2, ticks=[], colorbar=false, title="coeff. 2")
+savefig("plot1.png")
 #md Main.HTMLPlot(p) #hide
 # # Iterative solvers
 # The normal operator `A` and the backprojection `b` are compatible with the iterative solvers from [IterativeSolvers.jl](https://github.com/JuliaLinearAlgebra/IterativeSolvers.jl) and 
@@ -108,4 +111,5 @@ xr = reshape(xr, Nx, Nx, Nc) # reshape vector back to 2D image with Nc coefficie
 
 p = heatmap(abs.(xr[:,:,1]), layout=(1,2), subplot=1, ticks=[], colorbar=false, size=(700,350), title="coeff. 1")
 heatmap!(p, abs.(xr[:,:,2]), subplot=2, ticks=[], colorbar=false, title="coeff. 2")
+savefig("plot2.png")
 #md Main.HTMLPlot(p) #hide

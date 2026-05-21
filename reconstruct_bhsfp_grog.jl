@@ -1,7 +1,4 @@
-## ==========================================================================
-# Reconstruction script for meas_MID00158_FID02539_MT_bhsfp_BPJA01_3cyc.dat
-# Uses MRITwixTools for data loading, GROG gridding + FFT-based subspace
-# reconstruction, with visualization via CairoMakie.
+
 ## ==========================================================================
 
 using MRISubspaceRecon
@@ -13,11 +10,9 @@ using JLD2
 using CairoMakie
 
 ## ==========================================================================
-# 1) Load raw data with MRITwixTools
-## ==========================================================================
+# Load raw data with MRITwixTools
 raw_file = joinpath(@__DIR__, "..", "..", "meas_MID00158_FID02539_MT_bhsfp_BPJA01_3cyc.dat")
 println("Reading twix file: $raw_file")
-println("This may take a moment...")
 twix_raw = read_twix(raw_file)
 
 # Handle multi-raid files (VD/VE/XA): read_twix returns a Vector{TwixObj}
@@ -31,38 +26,16 @@ end
 
 # Display available scan types and header info
 println("\nTwix object: ", twix)
-println("Available fields: ", collect(propertynames(twix)))
 
 # Print data dimensions
 println("\nImage data full size: ", fullSize(twix.image))
 println("Image data squeezed size: ", sqzSize(twix.image))
 println("Image data squeezed dims: ", sqzDims(twix.image))
-
-## ==========================================================================
-# 2) Extract parameters from header
-## ==========================================================================
-# Try to extract matrix size from header
-Nx = try
-    Int(twix.hdr.MeasYaps.sKSpace.lBaseResolution)
-catch
-    128  # fallback
-end
 println("\nBase resolution: Nx = $Nx")
 
-# Search for additional useful parameters
-println("\nSearching header for relevant parameters...")
-try
-    results = search(twix.hdr, "lBaseResolution", "ReadoutOversamplingFactor")
-    println(results)
-catch e
-    println("Header search: ", e)
-end
-
 ## ==========================================================================
-# 3) Read image data
-## ==========================================================================
-# Enable readout oversampling removal in MRITwixTools (does it during reading,
-# so we never allocate the full oversampled array)
+# Read image data
+# Enable readout oversampling removal in MRITwixTools 
 twix.image.removeOS = true
 
 println("\nReading image data (with OS removal)...")
@@ -75,16 +48,16 @@ println("Raw data type: $(eltype(data_raw))")
 data_sz = size(data_raw)
 println("\nLoaded data dimensions: $data_sz")
 
-# Also get fullSize for reference (note: fullSize reports pre-OS-removal NCol)
+# Also get fullSize for reference 
 full_sz = fullSize(twix.image)
 println("fullSize (pre-OS removal): $full_sz")
 
 # Get actual dimensions from loaded data
 # First two dims are NCol (after OS removal) and NCha
-Nr_raw = data_sz[1]    # NCol after OS removal
+Nr_raw = data_sz[1]    # NCol 
 Ncoil = data_sz[2]     # number of receive coils
-Nr = Nr_raw            # readout samples = what we actually have
-Ncyc = 3               # number of cycles (from filename "3cyc")
+Nr = Nr_raw            # readout samples 
+Ncyc = 3               # number of cycles 
 
 # Total spokes = everything beyond the first two dimensions
 Nspokes_total = prod(data_sz[3:end])
@@ -104,7 +77,6 @@ println("  Total spokes:        $Nspokes_total")
 
 ## ==========================================================================
 # 3b) Load subspace basis to determine Nt
-## ==========================================================================
 basis_file = joinpath(@__DIR__, "bases_network_3T_R01_brain.jld2")
 println("\nLoading subspace basis from: $basis_file")
 basis_data = load(basis_file)
@@ -114,10 +86,7 @@ println("Available keys in basis file: ", collect(keys(basis_data)))
 U = ComplexF32.(basis_data["U"])
 println("Basis \"U\" size: $(size(U)) — (Nt_basis, Ncoeff_max)")
 
-# Determine Nt and Ncyc from data and basis
-# The basis has Nt_basis rows, but the data may have slightly fewer usable time frames
-# due to dummy scans or preparation pulses.
-# We know from the header that lRadialViews = 60 (spokes per time frame)
+
 Nt_basis = size(U, 1)
 
 # Try to determine Ncyc from header (lRadialViews)
@@ -148,19 +117,6 @@ println("  Nr:                  $Nr")
 
 ## ==========================================================================
 # 4) Reshape data for reconstruction
-## ==========================================================================
-# getdata returns data shaped as (NCol, NCha, NLin, NAve, NRep) [squeezed]
-# From the header and dimensions:
-#   NLin=1140, NAve=60, NRep=3
-#   Nt = NLin * NRep = 1140 * 3 = 3420 (time frames)
-#   Ncyc = NAve = 60 (spokes per time frame)
-#
-# The trajectory (traj_kooshball_goldenratio) generates spokes sequentially
-# across all time frames: spoke ordering is (Ncyc, Nt) = (60, 3420)
-# i.e., for each time frame, Ncyc spokes are acquired.
-#
-# In the raw data: the "Ave" dimension corresponds to the Ncyc spokes per frame,
-# and "Lin" × "Rep" together form the Nt time frames.
 
 println("\n  Raw data memory: $(round(sizeof(data_raw) / 1e9, digits=2)) GB")
 println("  Raw data shape: $(size(data_raw))")
@@ -208,26 +164,6 @@ else
     error("Dimension mismatch: NLin*NAve*NRep=$(NLin*NAve*NRep) != Nspokes_total=$Nspokes_total")
 end
 
-# Reshape data_raw into the final (Nr*Ncyc, Nt, Ncoil) format.
-# getdata returns data in squeezed form following sqzDims order.
-# We reshape using the actual data dimensions and the mapping determined above.
-
-# First, reshape data_raw to separate all acquisition dimensions
-# getdata shape follows sqzDims: ["Col", "Cha", "Lin", "Ave", "Rep"] (only non-singleton)
-# But after removeOS, Col is halved. The squeezed data has shape data_sz.
-# We need to figure out which dimension is which from the actual sizes.
-
-# The data from getdata is ordered with fastest-varying first:
-# (Col, Cha, Lin, Ave, Rep) if all are > 1
-# We reshape to separate these explicitly based on what we know:
-#   Nspokes_total = NLin * NAve * NRep (verified above)
-#   data_raw is (Nr_raw, Ncoil, <remaining dims flattened or separated>)
-
-# Reshape to full 5D based on fullSize ordering: Col, Cha, Lin, NPar=1, NSli=1, Ave, ..., Rep
-# Since getdata squeezes singletons, the returned shape is (Nr_raw, Ncoil, NLin, NAve, NRep)
-# IF all three (NLin, NAve, NRep) > 1. Let's handle this robustly:
-
-# Figure out the shape getdata returned by checking data_sz
 println("  data_raw shape: $data_sz")
 println("  Attempting reshape to (Nr=$Nr_raw, Ncoil=$Ncoil, NLin=$NLin, NAve=$NAve, NRep=$NRep)")
 
@@ -262,67 +198,6 @@ else
 
     data = Array{ComplexF32}(undef, Nr * Ncyc, Nt, Ncoil)
     println("  Allocating output: $(round(sizeof(data) / 1e9, digits=2)) GB")
-
-    # The trajectory traj_kooshball_goldenratio generates angles as:
-    #   phi_flat = golden_angle * (0:Ncyc*Nt-1)
-    #   phi = reshape(phi_flat, Nt, Ncyc)  -- first fills along Nt, then Ncyc
-    #   traj_kooshball(Nr, phi', ...)       -- transpose to (Ncyc, Nt)
-    #
-    # After reshape(trj, 3, Nr*Ncyc, Nt), the first dim of data corresponds to:
-    #   data[1:Nr, it, :] = spoke with angle index (it-1)         [icyc=1]
-    #   data[Nr+1:2Nr, it, :] = spoke with angle index Nt+(it-1)  [icyc=2]
-    #   ...
-    #   data[(icyc-1)*Nr+1:icyc*Nr, it, :] = angle index (icyc-1)*Nt + (it-1)
-    #
-    # So the flat spoke index for data position (icyc, it) is:
-    #   spoke_sequential = (icyc-1)*Nt + it  (1-based)
-    #
-    # The data from the scanner is acquired sequentially in time:
-    #   acquisition order = spoke 1, spoke 2, ..., spoke Nspokes_total
-    #   which maps to data_5d indices: ilin=1..NLin, iave=1..NAve, irep=1..NRep
-    #   in column-major order: ilin varies fastest, then iave, then irep
-    #   so flat_acq_idx = (irep-1)*NLin*NAve + (iave-1)*NLin + ilin
-    #
-    # The trajectory sequential spoke index is:
-    #   flat_trj_idx = (icyc-1)*Nt + it = (icyc-1)*Nt + (irep-1)*NLin + ilin
-    #
-    # For these to match, we need:
-    #   flat_acq_idx == flat_trj_idx
-    #   (irep-1)*NLin*NAve + (iave-1)*NLin + ilin == (icyc-1)*Nt + (irep-1)*NLin + ilin
-    #   This simplifies if icyc=iave and the rep ordering aligns.
-    #
-    # Actually, the acquisition order is simply sequential:
-    #   spoke 1, spoke 2, ..., spoke 205200
-    # And the trajectory also generates angles sequentially:
-    #   angle_idx 0, 1, 2, ..., 205199
-    # The reshape into (Ncyc, Nt) is just a bookkeeping convention.
-    #
-    # So the simplest correct approach: map flat acquisition index to (icyc, it)
-    # using the same reshape convention as the trajectory:
-    #   phi = reshape(phi_flat, Nt, Ncyc) then transpose
-    #   means: flat_idx -> (it, icyc) via column-major reshape(1:N, Nt, Ncyc)
-    #   i.e., flat_idx = (icyc-1)*Nt + it
-    #
-    # And the acquisition flat index (column-major through data_5d dims 3,4,5):
-    #   flat_acq = (irep-1)*NLin*NAve + (iave-1)*NLin + ilin
-    #
-    # So we need: (icyc-1)*Nt + it == (irep-1)*NLin*NAve + (iave-1)*NLin + ilin
-    #   where it = (irep-1)*NLin + ilin (our previous mapping)
-    #   gives: (icyc-1)*Nt + (irep-1)*NLin + ilin
-    #        = (iave-1)*NLin*NRep + (irep-1)*NLin + ilin  [if icyc=iave, Nt=NLin*NRep]
-    #   But the actual acq order: (irep-1)*NLin*NAve + (iave-1)*NLin + ilin
-    #   These DON'T match unless we swap the role of iave and irep in 'it'.
-    #
-    # Correct mapping: the acquisition visits all Ave for each Lin within each Rep:
-    #   flat_acq = (irep-1)*NLin*NAve + (iave-1)*NLin + ilin  [ilin fastest]
-    #   = ilin + (iave-1)*NLin + (irep-1)*NLin*NAve
-    #
-    # We need this to equal: (icyc-1)*Nt + it where it=1..Nt, icyc=1..Ncyc
-    # If icyc maps to what varies in the middle (iave cycling through NLin blocks):
-    #   Actually let's just use flat sequential ordering — it's the safest.
-
-    # Use flat sequential ordering: data is in acquisition order,
-    # trajectory is in sequential angle order. Both use the same sequence.
     data_flat = reshape(data_raw, Nr_raw, Ncoil, Nspokes_total)
 
     for icoil in 1:Ncoil
@@ -348,7 +223,6 @@ println("  Data memory: $(round(sizeof(data) / 1e9, digits=2)) GB")
 
 ## ==========================================================================
 # 5) Set reconstruction parameters
-## ==========================================================================
 img_shape = (Nx, Nx, Nx)    # 3D kooshball reconstruction
 Ncoeff = 4                  # number of subspace coefficients
 
@@ -364,14 +238,12 @@ println("  Estimated image memory: $(round(sizeof(ComplexF32) * prod(img_shape) 
 
 ## ==========================================================================
 # 6) Select subspace coefficients from basis (already loaded in step 3b)
-## ==========================================================================
 Ncoeff = 4
 U = U[1:Nt, 1:Ncoeff]
 println("\nSubspace basis used: $(size(U)) — (Nt, Ncoeff)")
 
 ## ==========================================================================
 # 7) Generate trajectory
-## ==========================================================================
 println("\nGenerating 3D kooshball trajectory with golden-ratio sampling...")
 trj = traj_kooshball_goldenratio(Nr, Ncyc, Nt; adc_dim=true)
 # trj dimensions: (3, Nr, Ncyc, Nt)
@@ -383,14 +255,12 @@ println("Trajectory size: $(size(trj))")
 
 ## ==========================================================================
 # 8) Reshape trajectory for GROG
-## ==========================================================================
 # GROG expects trj as (Ndim, Nr*Ncyc, Nt)
 trj_rs = reshape(trj, size(trj, 1), Nr * Ncyc, Nt)
 println("Trajectory reshaped to: $(size(trj_rs))")
 
 ## ==========================================================================
 # 9) GROG gridding (non-Cartesian → Cartesian)
-## ==========================================================================
 println("\nPerforming GROG gridding...")
 t_grog = @elapsed trj_cart = radial_grog!(data, trj_rs, Nr, img_shape)
 println("GROG gridding complete. Time: $(round(t_grog, digits=1)) s")
@@ -398,7 +268,6 @@ println("Cartesian trajectory size: $(size(trj_cart)), eltype: $(eltype(trj_cart
 
 ## ==========================================================================
 # 10) Estimate coil sensitivity maps
-## ==========================================================================
 println("\nEstimating coil sensitivity maps (ESPIRiT)...")
 t_cmaps = @elapsed cmaps = calculate_coil_maps(data, trj_cart, img_shape; U, verbose=true)
 println("Coil maps estimated. Time: $(round(t_cmaps, digits=1)) s")
@@ -406,7 +275,6 @@ println("Number of coil maps: $(length(cmaps)), each of size: $(size(cmaps[1]))"
 
 ## ==========================================================================
 # 11) Compute backprojection (adjoint / initial estimate)
-## ==========================================================================
 println("\nComputing backprojection...")
 t_bp = @elapsed xbp = calculate_backprojection(data, trj_cart, cmaps; U)
 println("Backprojection complete. Time: $(round(t_bp, digits=1)) s")
@@ -414,7 +282,6 @@ println("Backprojection size: $(size(xbp))")
 
 ## ==========================================================================
 # 12) Build normal operator and solve with CG
-## ==========================================================================
 println("\nBuilding FFT normal operator...")
 t_op = @elapsed AᴴA = FFTNormalOp(img_shape, trj_cart, U; cmaps)
 println("Normal operator built. Time: $(round(t_op, digits=1)) s")
@@ -428,15 +295,13 @@ println("Reconstructed image size: $(size(x_recon))")
 
 ## ==========================================================================
 # 13) Save results
-## ==========================================================================
 output_file = joinpath(@__DIR__, "recon_MT_bhsfp_BPJA01_3cyc_grog.jld2")
 jldsave(output_file; x_recon, cmaps, xbp, trj_cart, U)
 println("\nResults saved to: $output_file")
 
 ## ==========================================================================
 # 14) Visualization
-## ==========================================================================
-println("\nGenerating figures...")
+ println("\nGenerating figures...")
 
 # Select central slices for display
 if length(img_shape) == 3
@@ -555,7 +420,6 @@ display(fig1)
 
 ## ==========================================================================
 # 15) Print summary
-## ==========================================================================
 println("\n", "="^60)
 println("RECONSTRUCTION SUMMARY")
 println("="^60)
