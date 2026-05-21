@@ -20,6 +20,10 @@ using Random
 using LinearAlgebra
 using CUDA
 
+
+println("CUDA functional: ", CUDA.functional())
+println("GPU device: ", CUDA.functional() ? CUDA.device() : "none")
+
 Nx = 32
 Nc = 2 # nr of coefficients in the temporal subspace
 Nt = 10 # nr of acquired time frames per cycle
@@ -46,6 +50,19 @@ println("size(cmaps) = $(size(cmaps))")
 
 ## set up a 2D radial trajectory
 trj = traj_2d_radial_goldenratio(2Nx, Ncyc, Nt; adc_dim=false) # 2Nx for oversampling
+
+
+# CPU arrays
+data = randn(ComplexF32, 100, 100)
+println(typeof(data))  # Array{ComplexF32, 2}
+
+# GPU arrays
+data_gpu = CuArray(data)
+println(typeof(data_gpu))  # CuArray{ComplexF32, 2, CUDA.DeviceMemory}
+
+println("Data on GPU: ", data isa CuArray)
+println("Coil maps on GPU: ", cmaps[1] isa CuArray)
+println("Trajectory on GPU: ", trj isa CuArray)
 
 ## set up basis functions
 U = randn(ComplexF32, Nt, Nc)
