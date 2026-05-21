@@ -63,7 +63,7 @@ trj = CuArray(trj)
 println(typeof(data_gpu))  # CuArray{ComplexF32, 2, CUDA.DeviceMemory}
 
 println("Data on GPU: ", data_gpu isa CuArray)
-println("Coil maps on GPU: ", cmaps[1] isa CuArray)
+println("Coil maps on GPU: ", cmaps isa CuArray)
 println("Trajectory on GPU: ", trj isa CuArray)
 
 ## set up basis functions
