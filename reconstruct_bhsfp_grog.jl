@@ -88,7 +88,6 @@ Ncyc = 3               # number of cycles (from filename "3cyc")
 
 # Total spokes = everything beyond the first two dimensions
 Nspokes_total = prod(data_sz[3:end])
-Nt = Nspokes_total ÷ Ncyc
 
 # Update Nx based on actual readout length after OS removal
 if Nr_raw != Nx
@@ -96,53 +95,59 @@ if Nr_raw != Nx
     Nx = Nr_raw
 end
 
-println("\nDerived parameters:")
+println("\nDerived parameters (preliminary):")
 println("  Nx (matrix size):    $Nx")
 println("  Nr_raw (ADC cols):   $Nr_raw")
 println("  Nr (readout pts):    $Nr")
 println("  Ncoil:               $Ncoil")
-println("  Ncyc:                $Ncyc")
-println("  Nt (time frames):    $Nt")
 println("  Total spokes:        $Nspokes_total")
+
+## ==========================================================================
+# 3b) Load subspace basis to determine Nt
+## ==========================================================================
+basis_file = joinpath(@__DIR__, "bases_network_3T_R01_brain.jld2")
+println("\nLoading subspace basis from: $basis_file")
+basis_data = load(basis_file)
+println("Available keys in basis file: ", collect(keys(basis_data)))
+
+# Load the subspace basis matrix "U" — size (Nt_basis, Ncoeff_max)
+U = ComplexF32.(basis_data["U"])
+println("Basis \"U\" size: $(size(U)) — (Nt_basis, Ncoeff_max)")
+
+# The basis Nt defines the number of time frames for reconstruction
+Nt = size(U, 1)
+Ncyc = Nspokes_total ÷ Nt
+@assert Nspokes_total % Nt == 0 "Total spokes ($Nspokes_total) not divisible by Nt ($Nt) from basis"
+
+println("\nFinal parameters:")
+println("  Nt (from basis):     $Nt")
+println("  Ncyc (spokes/frame): $Ncyc")
+println("  Ncoil:               $Ncoil")
+println("  Nr:                  $Nr")
 
 ## ==========================================================================
 # 4) Reshape data for reconstruction
 ## ==========================================================================
 # getdata returns data shaped according to sqzDims.
 # We need to reshape to (Nr*Ncyc, Nt, Ncoil) for the reconstruction pipeline.
-#
-# Typical radial data from twix: (NCol, NCha, NLin, ...) where
-#   NCol = readout samples, NCha = coils, NLin = spoke index
-# We treat the spokes as being organized into Ncyc spokes per time frame × Nt frames.
 
 println("\n  Raw data memory: $(round(sizeof(data_raw) / 1e9, digits=2)) GB")
 
 # Reshape to (NCol, Ncoil, Nspokes_total) — collapse all spoke/line dims
-# This is just a view (no allocation) as long as data is contiguous
 data_raw_rs = reshape(data_raw, Nr_raw, Ncoil, Nspokes_total)
-
-# Verify divisibility
-@assert Nspokes_total % Ncyc == 0 "Total spokes ($Nspokes_total) not divisible by Ncyc ($Ncyc)"
-@assert Nspokes_total ÷ Ncyc == Nt "Spoke/cycle mismatch: $Nspokes_total / $Ncyc != $Nt"
 
 # Allocate final array directly at target shape: (Nr*Ncyc, Nt, Ncoil)
 data = Array{ComplexF32}(undef, Nr * Ncyc, Nt, Ncoil)
 println("  Allocating output: $(round(sizeof(data) / 1e9, digits=2)) GB")
 
 # Copy coil-by-coil, reshaping spokes into (Ncyc, Nt) groups
-# The spoke ordering is: spoke1_t1, spoke1_t2, ..., spoke1_tNt, spoke2_t1, ...
-# i.e., (Ncyc, Nt) when reshaped — but this depends on acquisition ordering.
-# For golden-ratio kooshball, spokes are sequential: (Nt, Ncyc) then permuted,
-# or simply (Nspokes_total) split as (Ncyc, Nt).
-# Try reshape as (Nr, Nspokes_total) -> (Nr, Ncyc, Nt) -> (Nr*Ncyc, Nt)
+# Spoke ordering matches traj_kooshball_goldenratio:
+#   traj is generated as reshape(phi, Nt, Ncyc) then transposed to (Ncyc, Nt)
+#   So spokes are stored as: cyc1_t1, cyc2_t1, ..., cycN_t1, cyc1_t2, ...
+#   i.e., spoke_idx = (it - 1) * Ncyc + icyc
 for icoil in 1:Ncoil
     for it in 1:Nt
         for icyc in 1:Ncyc
-            ispoke = (it - 1) * Ncyc + icyc  # spoke index assuming (Nt, Ncyc) ordering
-            src_idx = (icyc - 1) * Nt + it    # spoke index assuming (Ncyc, Nt) ordering
-            # Use the ordering that matches traj_kooshball_goldenratio:
-            # traj is generated as reshape(phi, Nt, Ncyc) then transposed to (Ncyc, Nt)
-            # So spokes are stored as: cyc1_t1, cyc2_t1, cyc3_t1, cyc1_t2, cyc2_t2, ...
             spoke_idx = (it - 1) * Ncyc + icyc
             out_row_start = (icyc - 1) * Nr + 1
             out_row_end = icyc * Nr
@@ -176,39 +181,11 @@ println("  Ncoeff:    $Ncoeff")
 println("  Estimated image memory: $(round(sizeof(ComplexF32) * prod(img_shape) * Ncoeff / 1e9, digits=2)) GB")
 
 ## ==========================================================================
-# 6) Load subspace basis
+# 6) Select subspace coefficients from basis (already loaded in step 3b)
 ## ==========================================================================
-basis_file = joinpath(@__DIR__, "bases_network_3T_R01_brain.jld2")
-println("\nLoading subspace basis from: $basis_file")
-basis_data = load(basis_file)
-
-# Print available keys
-println("Available keys in basis file: ", collect(keys(basis_data)))
-
-# Load the subspace basis matrix "U" — size (Nt_basis, Ncoeff_max)
-U = ComplexF32.(basis_data["U"])
-println("Basis \"U\" size: $(size(U)) — (Nt_basis, Ncoeff_max)")
-
-# The basis Nt defines the number of time frames for reconstruction
-Nt_basis = size(U, 1)
-println("Nt from basis: $Nt_basis")
-
-# Update Nt to match the basis — the data Nt was derived from total spokes,
-# but the actual temporal dimension for subspace reconstruction is Nt_basis
-if Nt != Nt_basis
-    println("\n  Note: Recalculating Ncyc from data.")
-    println("  Data total spokes: $Nspokes_total")
-    println("  Basis Nt: $Nt_basis")
-    Ncyc_new = Nspokes_total ÷ Nt_basis
-    println("  New Ncyc (= total_spokes / Nt_basis): $Ncyc_new")
-    Ncyc = Ncyc_new
-    Nt = Nt_basis
-    println("  Updated: Nt=$Nt, Ncyc=$Ncyc")
-end
-
-# Select the number of subspace coefficients
+Ncoeff = 4
 U = U[1:Nt, 1:Ncoeff]
-println("Subspace basis used: $(size(U)) — (Nt, Ncoeff)")
+println("\nSubspace basis used: $(size(U)) — (Nt, Ncoeff)")
 
 ## ==========================================================================
 # 7) Generate trajectory
