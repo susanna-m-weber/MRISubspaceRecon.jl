@@ -109,12 +109,21 @@ function hdr_get(hdr, path)
 end
 
 # Readout oversampling
+
+
 ros = hdr_get(twix.hdr, "MeasYaps.sKSpace.dReadoutOversamplingFactor")
 if ros !== nothing
     println("  Readout oversampling:      $ros")
+
+
 else
     println("  Readout oversampling:      2x (assumed, NCol/Nx = $(Nr_raw ÷ Int(twix.hdr["MeasYaps.sKSpace.lBaseResolution"])))")
 end
+
+
+
+
+
 
 # FOV
 fov_read = hdr_get(twix.hdr, "MeasYaps.sSliceArray.asSlice.0.dReadoutFOV")
@@ -122,11 +131,37 @@ fov_phase = hdr_get(twix.hdr, "MeasYaps.sSliceArray.asSlice.0.dPhaseFOV")
 if fov_read !== nothing
     println("  FOV readout:               $fov_read mm")
     println("  FOV phase:                 $fov_phase mm")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 else
     println("  FOV:                       [not found]")
 end
 
 # Slice thickness
+
+
+
+
+
+
+
+
+
+
 thickness = hdr_get(twix.hdr, "MeasYaps.sSliceArray.asSlice.0.dThickness")
 if thickness !== nothing
     println("  Slab thickness:            $thickness mm")
@@ -134,35 +169,83 @@ else
     println("  Slice thickness:           [not found]")
 end
 
+
+
+
 # TR
 TR = hdr_get(twix.hdr, "MeasYaps.alTR.0")
 if TR !== nothing
     println("  TR:                        $TR μs ($(TR/1000) ms)")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 else
     println("  TR:                        [not found]")
 end
+
+
 
 # TE
 TE = hdr_get(twix.hdr, "MeasYaps.alTE.0")
 if TE !== nothing
     println("  TE:                        $TE μs ($(TE/1000) ms)")
+
+
+
+
+
+
+
 else
     println("  TE:                        [not found]")
 end
 
 # Flip angle
+
+
 fa = hdr_get(twix.hdr, "MeasYaps.adFlipAngleDegree.0")
 if fa !== nothing
-    println("  Flip angle:                $fa°")
+    println("  Flip angle:                $fa")
+
+
+
+
+
+
+
 else
     println("  Flip angle:                [not found]")
 end
+
+
+
 
 # Dwell time / Bandwidth
 bw = hdr_get(twix.hdr, "MeasYaps.sRXSPEC.alDwellTime.0")
 if bw !== nothing
     println("  Dwell time:                $bw ns")
     println("  Bandwidth/pixel:           $(round(1e9 / (bw * Nr_raw), digits=1)) Hz/px")
+
+
+
+
+
+
+
 else
     println("  Bandwidth:                 [not found]")
 end
@@ -180,16 +263,36 @@ if rad_views !== nothing
 end
 
 # Sequence name
+
+
 seq = hdr_get(twix.hdr, "MeasYaps.tSequenceFileName")
 if seq !== nothing
     println("  Sequence:                  $seq")
+
+
+
+
+
+
+
 end
 
 # Protocol name
+
+
 prot = hdr_get(twix.hdr, "MeasYaps.tProtocolName")
 if prot !== nothing
     println("  Protocol name:             $prot")
+
+
+
+
+
+
+
 end
+
+
 
 # Available header sections
 println("\n  Header sections: ", collect(keys(twix.hdr)))
