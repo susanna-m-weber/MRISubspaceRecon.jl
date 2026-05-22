@@ -3,12 +3,12 @@
 #SBATCH --output=tutorial_gpu_%j.out
 #SBATCH --error=tutorial_gpu_%j.err
 #SBATCH --time=02:00:00
-#SBATCH --mem=64G
+#SBATCH --mem=96G
 #SBATCH --cpus-per-task=8
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
-#SBATCH --partition=gpu
+#SBATCH --partition=a100_dev
 
 ## ==========================================================================
 # SLURM job script for tutorial_realdata.jl on GPU
@@ -46,7 +46,16 @@ echo ""
 echo "[$(date '+%H:%M:%S')] Starting tutorial_realdata.jl on GPU..."
 echo "─────────────────────────────────────────────────────────────"
 
+while true; do
+    echo "$(date '+%H:%M:%S') RSS=$(ps -o rss= -p $$ 2>/dev/null | awk '{print $1/1024/1024 " GB"}')" >> memory_log.txt
+    sleep 10
+done &
+MEM_PID=$!
+
 julia --project=. --threads=${JULIA_NUM_THREADS} docs/src/tutorial_realdata.jl
+
+kill $MEM_PID 2>/dev/null
+
 
 echo ""
 echo "============================================================"
