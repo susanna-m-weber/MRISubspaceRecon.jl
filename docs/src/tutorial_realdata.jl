@@ -1,7 +1,4 @@
-# # Non-Cartesian MRI Subspace Reconstruction from Raw Data
-# This script performs an iterative multi-coil MRI subspace reconstruction
-# from the bhsFP acquisition in meas_MID00158_FID02539_MT_bhsfp_BPJA01_3cyc.dat
-# using the conjugate gradient algorithm.
+
 
 using MRISubspaceRecon
 using MRITwixTools
@@ -13,7 +10,10 @@ using JLD2
 using Plots
 using CUDA
 
-# # 1) Load raw data
+println("CUDA functional: ", CUDA.functional())
+println("GPU device: ", CUDA.functional() ? CUDA.device() : "none")
+
+# Load raw data
 raw_file = joinpath(@__DIR__, "..", "..", "..", "..", "meas_MID00158_FID02539_MT_bhsfp_BPJA01_3cyc.dat")
 println("Loading: $raw_file")
 twix_raw = read_twix(raw_file; verbose=false)
@@ -41,7 +41,7 @@ Nspokes_total = NLin * NAve * NRep
 println("Nr=$Nr, Ncoil=$Ncoil, NLin=$NLin, NAve=$NAve, NRep=$NRep")
 println("Total spokes: $Nspokes_total")
 
-# # 2) Load subspace basis
+#  Load subspace basis
 basis_file = joinpath(@__DIR__, "..", "..", "bases_network_3T_R01_brain.jld2")
 println("\nLoading basis from: $basis_file")
 basis_data = load(basis_file)
@@ -64,12 +64,12 @@ U = U_full[1:Nt, 1:Nc]
 println("Nt=$Nt, Ncyc=$Ncyc, Nc=$Nc")
 println("Subspace basis: $(size(U))")
 
-# # 3) Reshape data
+#  Reshape data
 # Data format needed: (Nr*Ncyc, Nt, Ncoil) for 3D input, or (Nr, Ncyc, Nt, Ncoil) for 4D
 println("\nReshaping data...")
 data_flat = reshape(data_raw, Nr, Ncoil, Nspokes_total)
 
-# Allocate in 4D format: (Nr, Ncyc, Nt, Ncoil)
+# 4D format: (Nr, Ncyc, Nt, Ncoil)
 data = Array{ComplexF32}(undef, Nr, Ncyc, Nt, Ncoil)
 
 # Map flat spoke index to (icyc, it) using trajectory convention:
@@ -91,9 +91,9 @@ GC.gc()
 println("Data reshaped to: $(size(data))")
 println("Data memory: $(round(sizeof(data)/1e9, digits=2)) GB")
 
-# # 4) Generate trajectory
-# We use a 3D kooshball trajectory with golden-ratio sampling.
-# The trajectory uses float values in range k ∈ [-0.5, 0.5).
+# # Generate trajectory
+# 3D kooshball trajectory with golden-ratio sampling
+# float values in range k ∈ [-0.5, 0.5)
 img_shape = (Nx, Nx, Nx)
 println("\nimg_shape: $img_shape")
 
@@ -103,14 +103,14 @@ println("typeof(trj) = $(typeof(trj))")
 println("typeof(U) = $(typeof(U))")
 println("typeof(data) = $(typeof(data))")
 
-# # 5) Coil sensitivity maps
-# Coil maps are auto-calibrated from k-space using ESPIRiT:
+#  Coil sensitivity maps
+# auto-calibrated from k-space using ESPIRiT
 println("\nEstimating coil maps (ESPIRiT)...")
 t_cmaps = @elapsed cmaps = calculate_coil_maps(data, trj, img_shape; U, density_compensation=:radial_3D, verbose=true)
 println("Coil maps estimated. Time: $(round(t_cmaps, digits=1)) s")
 println("Number of coil maps: $(length(cmaps)), size: $(size(cmaps[1]))")
 
-# # 6) Normal operator and adjoint
+# # Normal operator and adjoint
 # Compute the NFFT-based normal operator:
 println("\nBuilding NFFT normal operator...")
 t_op = @elapsed AᴴA = NFFTNormalOp(img_shape, trj, U; cmaps)

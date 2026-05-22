@@ -65,7 +65,7 @@ dim_names = ["NCol", "NCha", "NLin", "NPar", "NSli", "NAve",
 
 println("\nFull size (all 16 dimensions):")
 for (name, val) in zip(dim_names, full_sz)
-    val > 1 && println("  $name = $val")
+    println("  $name = $val")
 end
 println("\n  All dims: $full_sz")
 
@@ -81,6 +81,21 @@ println("  ADC samples per readout (NCol): $Nr_raw")
 println("  Number of coils (NCha):          $Ncoil")
 println("  Total spokes/lines:              $Nspokes_total")
 println("  Total acquisitions:              $(twix.image.meta.NAcq)")
+
+
+NPar = full_sz[4]
+NSli = full_sz[5]
+thickness = twix.hdr["MeasYaps.sSliceArray.asSlice.0.dThickness"]  # 192.0
+
+if NPar > 1
+    println("3D Cartesian/Stack-of-stars (NPar = $NPar)")
+elseif NSli > 1
+    println("2D multi-slice (NSli = $NSli)")
+elseif thickness > 50  # thick slab
+    println("3D radial (kooshball) — single thick slab ($thickness mm)")
+else
+    println("2D single-slice ($thickness mm)")
+end
 
 ## ==========================================================================
 # 4) Header parameters
