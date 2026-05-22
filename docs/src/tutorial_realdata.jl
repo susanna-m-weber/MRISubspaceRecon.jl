@@ -10,6 +10,17 @@ using JLD2
 using Plots
 using CUDA
 
+# Check GPU availability
+if CUDA.functional()
+    println("✓ GPU detected: $(CUDA.device())")
+    println("  GPU memory: $(round(CUDA.total_memory() / 1e9, digits=1)) GB")
+    USE_GPU = true
+else
+    println("✗ No GPU available — running on CPU")
+    USE_GPU = false
+end
+using CUDA
+
 println("CUDA functional: ", CUDA.functional())
 println("GPU device: ", CUDA.functional() ? CUDA.device() : "none")
 
@@ -92,7 +103,18 @@ img_shape = (Nx, Nx, Nx)
 println("\nimg_shape: $img_shape")
 
 trj = traj_kooshball_goldenratio(Nr, Ncyc, Nt; adc_dim=false)
+trj = Float32.(trj)
 println("Trajectory size: $(size(trj))")
+
+# Transfer to GPU if available
+if USE_GPU
+    println("\nTransferring data to GPU...")
+    data = CuArray(data)
+    trj = CuArray(trj)
+    U = CuArray(U)
+    println("  GPU memory used: $(round(CUDA.memory_status().used / 1e9, digits=2)) GB")
+end
+
 println("typeof(trj) = $(typeof(trj))")
 println("typeof(U) = $(typeof(U))")
 println("typeof(data) = $(typeof(data))")
@@ -131,6 +153,13 @@ Niter = 20
 println("\nRunning CG ($Niter iterations)...")
 t_cg = @elapsed xr = cg(AᴴA, vec(b); maxiter=Niter, verbose=true)
 xr = reshape(xr, Nx, Nx, Nx, Nc)
+
+# Transfer back to CPU for plotting/saving
+if USE_GPU
+    xr = Array(xr)
+    b = Array(b)
+    cmaps = [Array(c) for c in cmaps]
+end
 println("Reconstruction complete. Time: $(round(t_cg, digits=1)) s")
 println("Reconstructed image size: $(size(xr))")
 
