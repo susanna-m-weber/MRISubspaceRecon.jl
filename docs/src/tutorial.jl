@@ -52,16 +52,6 @@ println("size(cmaps) = $(size(cmaps))")
 trj = traj_2d_radial_goldenratio(2Nx, Ncyc, Nt; adc_dim=false) # 2Nx for oversampling
 
 
-# CPU arrays
-data = randn(ComplexF32, 100, 100)
-println(typeof(data))  # Array{ComplexF32, 2}
-
-# GPU arrays
-data_gpu = CuArray(data)
-println(typeof(data_gpu))  # CuArray{ComplexF32, 2, CUDA.DeviceMemory}
-
-
-
 ## set up basis functions
 U = randn(ComplexF32, Nt, Nc)
 U, _, _ = svd(U)

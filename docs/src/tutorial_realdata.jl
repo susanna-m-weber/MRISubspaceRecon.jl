@@ -49,14 +49,8 @@ U_full = ComplexF32.(basis_data["U"])
 println("Basis \"U\" size: $(size(U_full))")
 
 # Determine Nt and Ncyc
-Nt_basis = size(U_full, 1)
-Ncyc = try
-    Int(twix.hdr["MeasYaps.sKSpace.lRadialViews"])
-catch
-    local candidates = [n for n in 1:200 if Nspokes_total % n == 0 && Nspokes_total ÷ n <= Nt_basis]
-    last(candidates)
-end
-Nt = Nspokes_total ÷ Ncyc
+Nt = size(U_full, 1)
+Ncyc = 3
 
 Nc = 4  # number of subspace coefficients
 U = U_full[1:Nt, 1:Nc]
@@ -97,7 +91,7 @@ println("Data memory: $(round(sizeof(data)/1e9, digits=2)) GB")
 img_shape = (Nx, Nx, Nx)
 println("\nimg_shape: $img_shape")
 
-trj = traj_kooshball_goldenratio(Nr, Ncyc, Nt; adc_dim=true)
+trj = traj_kooshball_goldenratio(Nr, Ncyc, Nt; adc_dim=false)
 println("Trajectory size: $(size(trj))")
 println("typeof(trj) = $(typeof(trj))")
 println("typeof(U) = $(typeof(U))")
