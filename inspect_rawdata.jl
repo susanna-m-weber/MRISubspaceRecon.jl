@@ -242,6 +242,7 @@ end
 
 ## ==========================================================================
 # Estimate memory load
+Nx = Int(twix.hdr.MeasYaps.sKSpace.lBaseResolution)
 println("\n  Estimated data memory: $(round(sizeof(ComplexF32) * Nr_raw * Nspokes_total * Ncoil / 1e9, digits=2)) GB")
 println("  Estimated image memory (3D): $(round(sizeof(ComplexF32) * Nx^3 * 4 / 1e9, digits=2)) GB")
 
