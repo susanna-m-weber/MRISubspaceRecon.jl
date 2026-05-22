@@ -1,15 +1,10 @@
 ## ==========================================================================
-# Inspect raw data from meas_MID00158_FID02539_MT_bhsfp_BPJA01_3cyc.dat
-# Reads the .dat file using MRITwixTools and prints scan information.
-# Does NOT perform reconstruction — just reports metadata.
-## ==========================================================================
 
 using MRITwixTools
 using JLD2
 
 ## ==========================================================================
-# 1) Load twix file
-## ==========================================================================
+# Load twix file
 raw_file = joinpath(@__DIR__, "..", "..", "meas_MID00158_FID02539_MT_bhsfp_BPJA01_3cyc.dat")
 println("="^70)
 println("  INSPECTING: $raw_file")
@@ -17,7 +12,7 @@ println("="^70)
 println("\nReading twix file (header + MDH)...")
 twix_raw = read_twix(raw_file)
 
-# Handle multi-raid files (VD/VE/XA): read_twix returns a Vector{TwixObj}
+# Handle multi-raid files (VD/VE/XA)
 if isa(twix_raw, Vector)
     println("Multi-raid file detected with $(length(twix_raw)) measurement(s).")
     println("Using last measurement (index $(length(twix_raw))).")
@@ -28,10 +23,9 @@ end
 println("Done.\n")
 
 ## ==========================================================================
-# 2) General file info
-## ==========================================================================
+#  General file info
 println("─"^70)
-println("  GENERAL FILE INFO")
+println(" FILE INFO")
 println("─"^70)
 println("Available scan types: ", collect(propertynames(twix)))
 println()
@@ -41,18 +35,17 @@ for field in propertynames(twix)
     field == :hdr && continue
     obj = getproperty(twix, field)
     if obj isa MRITwixTools.RawData && obj.meta !== nothing
-        println("  📊 $field: $(obj.meta.NAcq) acquisitions, squeezed size = $(sqzSize(obj))")
+        println(" $field: $(obj.meta.NAcq) acquisitions, squeezed size = $(sqzSize(obj))")
     elseif obj isa MRITwixTools.RawData
-        println("  📊 $field: [no data]")
+        println(" $field: [no data]")
     end
 end
 
 ## ==========================================================================
-# 3) Image data dimensions
-## ==========================================================================
+# Image data dimensions
 println()
 println("─"^70)
-println("  IMAGE DATA DIMENSIONS")
+println(" DATA DIMENSIONS")
 println("─"^70)
 
 full_sz = fullSize(twix.image)
@@ -87,19 +80,21 @@ NPar = full_sz[4]
 NSli = full_sz[5]
 thickness = twix.hdr["MeasYaps.sSliceArray.asSlice.0.dThickness"]  # 192.0
 
+println()
+print("Trajectory: ")
 if NPar > 1
-    println("3D Cartesian/Stack-of-stars (NPar = $NPar)")
+    print("3D Cartesian/Stack-of-stars (NPar = $NPar)")
 elseif NSli > 1
-    println("2D multi-slice (NSli = $NSli)")
+    print("2D multi-slice (NSli = $NSli)")
 elseif thickness > 50  # thick slab
-    println("3D radial (kooshball) — single thick slab ($thickness mm)")
+    print("3D radial (kooshball) — single thick slab ($thickness mm)")
 else
-    println("2D single-slice ($thickness mm)")
+    print("2D single-slice ($thickness mm)")
 end
 
+println()
 ## ==========================================================================
-# 4) Header parameters
-## ==========================================================================
+#  Header parameters
 println()
 println("─"^70)
 println("  PROTOCOL PARAMETERS (from header)")
@@ -113,7 +108,6 @@ catch
     println("  Base resolution:           [not found in header]")
 end
 
-# Access parameters using string-path indexing (handles .0 array notation)
 # Helper function to safely get a header value by path
 function hdr_get(hdr, path)
     try
@@ -124,21 +118,13 @@ function hdr_get(hdr, path)
 end
 
 # Readout oversampling
-
-
 ros = hdr_get(twix.hdr, "MeasYaps.sKSpace.dReadoutOversamplingFactor")
 if ros !== nothing
     println("  Readout oversampling:      $ros")
 
-
 else
     println("  Readout oversampling:      2x (assumed, NCol/Nx = $(Nr_raw ÷ Int(twix.hdr["MeasYaps.sKSpace.lBaseResolution"])))")
 end
-
-
-
-
-
 
 # FOV
 fov_read = hdr_get(twix.hdr, "MeasYaps.sSliceArray.asSlice.0.dReadoutFOV")
@@ -146,37 +132,11 @@ fov_phase = hdr_get(twix.hdr, "MeasYaps.sSliceArray.asSlice.0.dPhaseFOV")
 if fov_read !== nothing
     println("  FOV readout:               $fov_read mm")
     println("  FOV phase:                 $fov_phase mm")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 else
     println("  FOV:                       [not found]")
 end
 
 # Slice thickness
-
-
-
-
-
-
-
-
-
-
 thickness = hdr_get(twix.hdr, "MeasYaps.sSliceArray.asSlice.0.dThickness")
 if thickness !== nothing
     println("  Slab thickness:            $thickness mm")
@@ -184,82 +144,28 @@ else
     println("  Slice thickness:           [not found]")
 end
 
-
-
-
 # TR
 TR = hdr_get(twix.hdr, "MeasYaps.alTR.0")
 if TR !== nothing
     println("  TR:                        $TR μs ($(TR/1000) ms)")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 else
     println("  TR:                        [not found]")
 end
-
-
 
 # TE
 TE = hdr_get(twix.hdr, "MeasYaps.alTE.0")
 if TE !== nothing
     println("  TE:                        $TE μs ($(TE/1000) ms)")
-
-
-
-
-
-
-
 else
     println("  TE:                        [not found]")
 end
-
-# Flip angle
-
-
-fa = hdr_get(twix.hdr, "MeasYaps.adFlipAngleDegree.0")
-if fa !== nothing
-    println("  Flip angle:                $fa")
-
-
-
-
-
-
-
-else
-    println("  Flip angle:                [not found]")
-end
-
-
-
 
 # Dwell time / Bandwidth
 bw = hdr_get(twix.hdr, "MeasYaps.sRXSPEC.alDwellTime.0")
 if bw !== nothing
     println("  Dwell time:                $bw ns")
     println("  Bandwidth/pixel:           $(round(1e9 / (bw * Nr_raw), digits=1)) Hz/px")
-
-
-
-
-
-
 
 else
     println("  Bandwidth:                 [not found]")
@@ -278,43 +184,24 @@ if rad_views !== nothing
 end
 
 # Sequence name
-
-
 seq = hdr_get(twix.hdr, "MeasYaps.tSequenceFileName")
 if seq !== nothing
     println("  Sequence:                  $seq")
 
-
-
-
-
-
-
 end
 
 # Protocol name
-
-
 prot = hdr_get(twix.hdr, "MeasYaps.tProtocolName")
 if prot !== nothing
     println("  Protocol name:             $prot")
 
-
-
-
-
-
-
 end
-
-
 
 # Available header sections
 println("\n  Header sections: ", collect(keys(twix.hdr)))
 
 ## ==========================================================================
-# 5) Trajectory & timing info
-## ==========================================================================
+# Trajectory & timing info
 println()
 println("─"^70)
 println("  TRAJECTORY & ACQUISITION INFO")
@@ -327,23 +214,10 @@ Nt_possible = Nspokes_total ÷ Ncyc
 println("  Assumed Ncyc (from filename): $Ncyc")
 println("  Nr (after removing 2x OS):    $Nr")
 println("  Nt (= total_spokes / Ncyc):   $Nt_possible")
-println("  Spokes per time frame:        $Ncyc")
-
-# Timing from MDH
-meta = twix.image.meta
-timestamps = meta.timestamp
-time_since_rf = meta.timeSinceRF
-
-println("\n  Timestamp range:     $(minimum(timestamps)) – $(maximum(timestamps))")
-println("  Time since last RF:  min=$(minimum(time_since_rf)), max=$(maximum(time_since_rf)) μs")
-
-# Check for reflected readouts
-n_reflected = sum(meta.IsReflected)
-println("  Reflected readouts:  $n_reflected / $(meta.NAcq) ($(round(100*n_reflected/meta.NAcq, digits=1))%)")
+println("  Spokes per time frame:        $Nave")
 
 ## ==========================================================================
-# 6) Subspace basis info (if available)
-## ==========================================================================
+# Subspace basis info 
 println()
 println("─"^70)
 println("  SUBSPACE BASIS")
@@ -361,9 +235,6 @@ if isfile(basis_file)
             if ndims(v) >= 2
                 println("       → Nt (rows) = $(size(v,1)), max Ncoeff (cols) = $(size(v,2))")
             end
-        elseif v isa NamedTuple || v isa Tuple
-            println("       (NamedTuple/Tuple — likely a neural network model)")
-            println("       fieldnames: $(keys(v))")
         else
             println("       value: $v")
         end
@@ -373,30 +244,12 @@ else
 end
 
 ## ==========================================================================
-# 7) Suggested reconstruction parameters
-## ==========================================================================
-println()
-println("─"^70)
-println("  SUGGESTED RECONSTRUCTION PARAMETERS")
-println("─"^70)
-
-Nx_est = Nr_raw ÷ 2
-println("  Nx (matrix size):     $Nx_est")
-println("  img_shape (3D):       ($Nx_est, $Nx_est, $Nx_est)")
-println("  img_shape (2D):       ($Nx_est, $Nx_est)")
-println("  Nr:                   $(Nr_raw ÷ 2) (with 2x OS removal)")
-println("  Ncyc:                 $Ncyc")
-println("  Nt:                   $Nt_possible")
-println("  Ncoil:                $Ncoil")
-println("  Ncoeff:               4 (adjust based on basis SVD)")
-println("  CG iterations:        20")
-
+# Estimate memory load
 println("\n  Estimated data memory: $(round(sizeof(ComplexF32) * Nr_raw * Nspokes_total * Ncoil / 1e9, digits=2)) GB")
 println("  Estimated image memory (3D): $(round(sizeof(ComplexF32) * Nx_est^3 * 4 / 1e9, digits=2)) GB")
 
 ## ==========================================================================
-# 8) Header search (useful fields)
-## ==========================================================================
+# Header search 
 println()
 println("─"^70)
 println("  HEADER SEARCH")
