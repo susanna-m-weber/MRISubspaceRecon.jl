@@ -171,13 +171,14 @@ println("size(b) = $(size(b))")
 
 # Visualize backprojection (central axial slice)
 slice_z = Nx ÷ 2
-p = heatmap(abs.(b[:, :, slice_z, 1])', title="Backprojection — Coeff 1",
+b_plot = USE_GPU ? Array(b) : b
+p = heatmap(abs.(b_plot[:, :, slice_z, 1])', title="Backprojection — Coeff 1",
             colorbar=true, aspect_ratio=1, color=:grays)
 display(p)
 savefig("tutorial_backprojection.png")
 println("Saved: tutorial_backprojection.png")
 
-# # 7) Iterative reconstruction with CG
+#  Iterative reconstruction with CG
 # Solve the inverse problem with conjugate gradient:
 Niter = 20
 println("\nRunning CG ($Niter iterations)...")
@@ -193,7 +194,7 @@ end
 println("Reconstruction complete. Time: $(round(t_cg, digits=1)) s")
 println("Reconstructed image size: $(size(xr))")
 
-# # 8) Visualize results
+# Visualize results
 println("\nVisualizing results...")
 
 # Axial slice through all coefficients
@@ -223,12 +224,12 @@ display(p2)
 savefig("tutorial_recon_ortho.png")
 println("Saved: tutorial_recon_ortho.png")
 
-# # 9) Save results
+#  Save results
 output_file = joinpath(@__DIR__, "..", "..", "recon_tutorial.jld2")
 jldsave(output_file; xr, cmaps, b, U)
 println("\nResults saved to: $output_file")
 
-# # 10) Summary
+# Summary
 println("\n", "="^60)
 println("RECONSTRUCTION SUMMARY")
 println("="^60)
