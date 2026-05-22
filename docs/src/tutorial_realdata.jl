@@ -131,10 +131,27 @@ println("typeof(data) = $(typeof(data))")
 #  Coil sensitivity maps
 # auto-calibrated from k-space using ESPIRiT
 println("\nEstimating coil maps (ESPIRiT)...")
+# Compute coil maps on CPU (less memory-intensive, avoids GPU OOM during calibration)
+# Then transfer results to GPU for the reconstruction
+println("  (Computing coil maps on CPU to avoid GPU memory pressure)")
 if USE_GPU
-    t_cmaps = @elapsed cmaps = calculate_coil_maps(data, trj, img_shape; U, verbose=true)
+    data_cpu = Array(data)
+    trj_cpu = Array(trj)
+    U_cpu = Array(U)
 else
-    t_cmaps = @elapsed cmaps = calculate_coil_maps(data, trj, img_shape; U, density_compensation=:radial_3D, verbose=true)
+    data_cpu = data
+    trj_cpu = trj
+    U_cpu = U
+end
+t_cmaps = @elapsed cmaps = calculate_coil_maps(data_cpu, trj_cpu, img_shape; U=U_cpu, density_compensation=:radial_3D, verbose=true)
+
+# Transfer coil maps to GPU if needed
+if USE_GPU
+    cmaps = [CuArray(c) for c in cmaps]
+    data_cpu = nothing
+    trj_cpu = nothing
+    U_cpu = nothing
+    GC.gc()
 end
 println("Coil maps estimated. Time: $(round(t_cmaps, digits=1)) s")
 println("Number of coil maps: $(length(cmaps)), size: $(size(cmaps[1]))")
