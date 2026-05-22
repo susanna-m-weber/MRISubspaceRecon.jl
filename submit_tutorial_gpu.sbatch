@@ -17,8 +17,16 @@
 
 # Load required modules (adjust to your cluster)
 module load cuda 2>/dev/null || true
-module load anaconda3 2>/dev/null || module load conda 2>/dev/null || true
-source activate hsfp_recon_julia 2>/dev/null || conda activate hsfp_recon_julia 2>/dev/null || true
+
+# Add Julia to PATH — adjust this path to match your installation
+export PATH="$HOME/.juliaup/bin:$PATH"
+
+# Verify Julia is found
+if ! command -v julia &> /dev/null; then
+    echo "ERROR: Julia not found in PATH. Tried: $HOME/.juliaup/bin/julia"
+    exit 1
+fi
+echo "Julia: $(which julia) — $(julia --version)"
 
 # Set environment variables
 export JULIA_NUM_THREADS=${SLURM_CPUS_PER_TASK:-8}
