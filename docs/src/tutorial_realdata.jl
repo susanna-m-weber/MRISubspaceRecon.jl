@@ -107,6 +107,14 @@ trj = traj_kooshball_goldenratio(Nr, Ncyc, Nt; adc_dim=false)
 trj = Float32.(trj)
 println("Trajectory size: $(size(trj))")
 
+# Reshape data and trajectory to 3D format for GPU compatibility:
+# data: (Nr*Ncyc, Nt, Ncoil), trj: (3, Nr*Ncyc, Nt)
+data = reshape(data, :, Nt, Ncoil)
+trj = reshape(trj, size(trj, 1), :, Nt)
+println("\nReshaped for reconstruction:")
+println("  data: $(size(data))")
+println("  trj:  $(size(trj))")
+
 # Transfer to GPU if available
 if USE_GPU
     println("\nTransferring data to GPU...")
