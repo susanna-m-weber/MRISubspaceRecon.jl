@@ -234,8 +234,6 @@ if isfile(basis_file)
             if ndims(v) >= 2
                 println("       → Nt (rows) = $(size(v,1)), max Ncoeff (cols) = $(size(v,2))")
             end
-        else
-            println("       value: $v")
         end
     end
 else
@@ -245,7 +243,7 @@ end
 ## ==========================================================================
 # Estimate memory load
 println("\n  Estimated data memory: $(round(sizeof(ComplexF32) * Nr_raw * Nspokes_total * Ncoil / 1e9, digits=2)) GB")
-println("  Estimated image memory (3D): $(round(sizeof(ComplexF32) * Nx_est^3 * 4 / 1e9, digits=2)) GB")
+println("  Estimated image memory (3D): $(round(sizeof(ComplexF32) * Nx^3 * 4 / 1e9, digits=2)) GB")
 
 ## ==========================================================================
 # Header search 
