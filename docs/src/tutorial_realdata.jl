@@ -113,7 +113,7 @@ if USE_GPU
     data = CuArray(data)
     trj = CuArray(trj)
     U = CuArray(U)
-    println("  GPU memory used: $(round(CUDA.memory_status().used / 1e9, digits=2)) GB")
+    println("  GPU memory used: $(round((CUDA.total_memory() - CUDA.available_memory()) / 1e9, digits=2)) GB")
 end
 
 println("typeof(trj) = $(typeof(trj))")
