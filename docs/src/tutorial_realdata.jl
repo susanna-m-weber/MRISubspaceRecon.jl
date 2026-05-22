@@ -123,7 +123,11 @@ println("typeof(data) = $(typeof(data))")
 #  Coil sensitivity maps
 # auto-calibrated from k-space using ESPIRiT
 println("\nEstimating coil maps (ESPIRiT)...")
-t_cmaps = @elapsed cmaps = calculate_coil_maps(data, trj, img_shape; U, density_compensation=:radial_3D, verbose=true)
+if USE_GPU
+    t_cmaps = @elapsed cmaps = calculate_coil_maps(data, trj, img_shape; U, verbose=true)
+else
+    t_cmaps = @elapsed cmaps = calculate_coil_maps(data, trj, img_shape; U, density_compensation=:radial_3D, verbose=true)
+end
 println("Coil maps estimated. Time: $(round(t_cmaps, digits=1)) s")
 println("Number of coil maps: $(length(cmaps)), size: $(size(cmaps[1]))")
 
