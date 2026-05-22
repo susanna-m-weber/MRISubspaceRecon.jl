@@ -143,7 +143,7 @@ else
     trj_cpu = trj
     U_cpu = U
 end
-t_cmaps = @elapsed cmaps = calculate_coil_maps(data_cpu, trj_cpu, img_shape; U=U_cpu, density_compensation=:radial_3D, verbose=true)
+t_cmaps = @elapsed cmaps = calculate_coil_maps(data_cpu, trj_cpu, img_shape; U=U_cpu, verbose=true)
 
 # Transfer coil maps to GPU if needed
 if USE_GPU
