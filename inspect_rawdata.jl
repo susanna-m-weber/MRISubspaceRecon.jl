@@ -214,7 +214,6 @@ Nt_possible = Nspokes_total ÷ Ncyc
 println("  Assumed Ncyc (from filename): $Ncyc")
 println("  Nr (after removing 2x OS):    $Nr")
 println("  Nt (= total_spokes / Ncyc):   $Nt_possible")
-println("  Spokes per time frame:        $Nave")
 
 ## ==========================================================================
 # Subspace basis info 
