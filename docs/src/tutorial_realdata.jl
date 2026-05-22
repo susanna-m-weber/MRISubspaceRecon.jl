@@ -10,6 +10,7 @@ using JLD2
 using Plots
 using CUDA
 
+# check GPU
 # Check GPU availability
 if CUDA.functional()
     println("✓ GPU detected: $(CUDA.device())")
